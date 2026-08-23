@@ -4,6 +4,31 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Recorder polish round — 2026-08-24 (v0.2.0)
+
+- **Nextcloud-style recorder**: the phone recorder now uses the same light
+  Nextcloud design language as the organizer app (white cards, NC blue,
+  red reserved for recording state).
+- **Live transcript**: visible by default (collapsible), and consecutive
+  captions from the same speaker flow together as one paragraph with a
+  "Speaker N" label — a new bubble starts only when the speaker changes
+  (Deepgram live diarization).
+- **One-tap start for independent assemblies**: mic check, round choice and a
+  single red "Start recording" button on one screen — the READY step now
+  exists only in orchestrated mode (where it arms the table).
+- **Recording screen**: the round question stays pinned at the top (tap to
+  expand), and the technical status shrank to a discreet one-line strip
+  (tap for details). Alerts (storage error / offline) remain full-size.
+- **Recovery dead-end fixed**: when the server definitively no longer has a
+  recovered recording (deleted/reset assembly), the phone now explains it and
+  offers "Download audio file" and an explicitly confirmed "Delete local
+  audio" instead of retrying forever.
+- **QR sheet**: tidier copy-link row under each code (truncated URL + copy
+  icon). Organizer app no longer hides its bottom edge behind mobile browser
+  toolbars (dynamic viewport height).
+- Round-end auto-stop on phones now reacts within ~5 s; app version 0.2.0
+  busts cached recorder assets so phones pick the new UI up immediately.
+
 ### Recording modes, summaries, model split, auto-QR — 2026-08-24
 
 - **Two recording modes per assembly** (wizard choice): *Orchestrated* — tables

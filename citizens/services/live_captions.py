@@ -51,6 +51,7 @@ class _LiveSession:
             "punctuate": "true",
             "smart_format": "true",
             "interim_results": "false",
+            "diarize": "true",
         }
         if self.language:
             params["language"] = self.language
@@ -104,7 +105,9 @@ class _LiveSession:
         alternatives = (data.get("channel") or {}).get("alternatives") or []
         text = (alternatives[0].get("transcript") if alternatives else "").strip()
         if text:
-            self.lines.append({"t": data.get("start", 0.0), "text": text})
+            words = alternatives[0].get("words") or []
+            speaker = words[0].get("speaker") if words else None
+            self.lines.append({"t": data.get("start", 0.0), "text": text, "speaker": speaker})
 
 
 class LiveCaptionManager:

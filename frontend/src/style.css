@@ -50,6 +50,8 @@
 	border-radius: var(--body-container-radius, 16px);
 	margin: var(--body-container-margin, 8px);
 	height: calc(100vh - 50px - 2 * var(--body-container-margin, 8px));
+	/* dvh: end above collapsing mobile browser toolbars (100vh hides the bottom) */
+	height: calc(100dvh - 50px - 2 * var(--body-container-margin, 8px));
 	overflow: hidden;
 	font-family: var(--font-face, system-ui, sans-serif);
 	box-shadow: 0 0 4px 0 rgba(0, 0, 0, 0.12);
@@ -624,7 +626,44 @@
 	margin: 12px auto;
 }
 
-#citizens-app .cz-qr-url { font-size: 9.5px; word-break: break-all; color: #666; margin: 8px 0 10px; }
+#citizens-app .cz-qr-linkrow {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 10px auto 0;
+	max-width: 240px;
+	background: #f5f6f8;
+	border: 1px solid var(--cz-border);
+	border-radius: 8px;
+	padding: 4px 4px 4px 10px;
+}
+
+#citizens-app .cz-qr-url {
+	flex: 1;
+	min-width: 0;
+	font-size: 10.5px;
+	color: #666;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	text-align: left;
+}
+
+#citizens-app .cz-qr-copy {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: #555;
+	cursor: pointer;
+}
+
+#citizens-app .cz-qr-copy:hover { background: var(--cz-bg-hover); }
 
 /* ================= transcript conversation ================= */
 
@@ -720,6 +759,7 @@
 		width: 100%;
 		border-radius: 0;
 		height: calc(100vh - 50px);
+		height: calc(100dvh - 50px);
 	}
 
 	#citizens-app .cz-sidebar {
@@ -770,5 +810,6 @@
 		gap: 8mm;
 	}
 	#citizens-app .cz-qr-item { break-inside: avoid; border: 1px solid #000; }
-	#citizens-app .cz-qr-item .cz-btn { display: none; }
+	#citizens-app .cz-qr-item .cz-btn,
+	#citizens-app .cz-qr-copy { display: none; }
 }

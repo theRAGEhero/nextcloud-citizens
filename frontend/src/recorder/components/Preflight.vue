@@ -11,14 +11,25 @@ import {
 	mdiServerNetwork,
 	mdiWaveform,
 } from '@mdi/js'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import SvgIcon from '../../components/ui/SvgIcon.vue'
-import { recorderApi, type JoinResult } from '../api'
+import { recorderApi, type JoinResult, type RoundInfo } from '../api'
 import { pickMimeType } from '../engine'
 import { idb } from '../idb'
 
 const props = defineProps<{ session: JoinResult }>()
-const emit = defineEmits<{ ready: [] }>()
+const emit = defineEmits<{ ready: []; start: [round: RoundInfo] }>()
+
+// independent tables pick a round and start right here — one screen, one tap;
+// orchestrated tables arm with READY and the facilitator starts the round
+const orchestrated = props.session.assembly.recording_mode === 'orchestrated'
+
+const openRounds = computed(() => props.session.rounds.filter((r) => !r.recorded_state))
+const selectedRound = ref<RoundInfo | null>(
+	props.session.rounds.filter((r) => !r.recorded_state).find((r) => r.status === 'ACTIVE') ??
+		props.session.rounds.filter((r) => !r.recorded_state)[0] ??
+		null,
+)
 
 type CheckState = 'pending' | 'ok' | 'warn' | 'fail'
 
@@ -212,10 +223,52 @@ const STATE_CLASS: Record<CheckState, string> = {
 			This browser cannot store audio locally. Recording would not be safe — please use a different
 			browser or disable private mode.
 		</div>
+
+		<template v-if="!orchestrated">
+			<div v-if="selectedRound" class="rc-card">
+				<p class="rc-eyebrow" style="margin-bottom: 4px">
+					Round {{ selectedRound.position }} of {{ session.rounds.length }} ·
+					{{ selectedRound.duration_minutes }} minutes
+				</p>
+				<p class="rc-question" style="margin: 0">{{ selectedRound.question || selectedRound.title }}</p>
+				<div v-if="openRounds.length > 1" style="margin-top: 14px">
+					<select
+						style="width: 100%; padding: 11px; border-radius: 10px; background: var(--rc-surface-2); color: var(--rc-text); border: 1px solid var(--rc-border); font-size: 15px"
+						:value="selectedRound.id"
+						@change="selectedRound = session.rounds.find((r) => r.id === ($event.target as HTMLSelectElement).value) ?? selectedRound">
+						<option
+							v-for="round in session.rounds"
+							:key="round.id"
+							:value="round.id"
+							:disabled="!!round.recorded_state">
+							Round {{ round.position }} — {{ round.title || round.question || 'Untitled' }}
+							{{ round.recorded_state ? ' ✓ recorded' : '' }}
+						</option>
+					</select>
+				</div>
+			</div>
+			<div v-else-if="session.rounds.length === 0" class="rc-alert">
+				This assembly has no rounds yet.
+			</div>
+			<div v-else class="rc-card rc-center">
+				<p class="rc-eyebrow">All rounds recorded</p>
+				<p class="rc-muted" style="margin: 0">This table has completed every round. Thank you!</p>
+			</div>
+		</template>
 		</div>
 
 		<div class="rc-actions">
-			<button class="rc-btn rc-primary" :disabled="!canProceed()" @click="emit('ready')">READY</button>
+			<button v-if="orchestrated" class="rc-btn rc-primary" :disabled="!canProceed()" @click="emit('ready')">
+				READY
+			</button>
+			<button
+				v-else-if="selectedRound"
+				class="rc-btn rc-record"
+				:disabled="!canProceed()"
+				@click="emit('start', selectedRound)">
+				<SvgIcon :path="mdiRecordCircleOutline" :size="22" />
+				Start recording
+			</button>
 		</div>
 	</div>
 </template>

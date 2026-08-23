@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { mdiAlertCircleOutline, mdiQrcodeScan, mdiRecordCircleOutline } from '@mdi/js'
+import { mdiAlertCircleOutline, mdiQrcodeScan } from '@mdi/js'
 import { computed, onMounted, ref } from 'vue'
 import SvgIcon from '../components/ui/SvgIcon.vue'
 import { recorderApi, type JoinResult, type RoundInfo } from './api'
@@ -12,7 +12,7 @@ import { initLogger } from './logger'
 
 const SESSION_KEY = 'citizens-recorder-session'
 
-type Screen = 'joining' | 'no-invite' | 'recovery' | 'preflight' | 'armed' | 'ready' | 'recording' | 'error'
+type Screen = 'joining' | 'no-invite' | 'recovery' | 'preflight' | 'armed' | 'recording' | 'error'
 
 const screen = ref<Screen>('joining')
 const error = ref('')
@@ -22,12 +22,6 @@ const recoveryRecording = ref<StoredRecording | null>(null)
 
 const orchestrated = computed(() => session.value?.assembly.recording_mode === 'orchestrated')
 
-// after preflight: orchestrated tables ARM (facilitator starts recording);
-// independent tables pick a round and start themselves
-function afterPreflight(): void {
-	screen.value = orchestrated.value ? 'armed' : 'ready'
-}
-
 function startRound(round: RoundInfo): void {
 	selectedRound.value = round
 	screen.value = 'recording'
@@ -35,7 +29,6 @@ function startRound(round: RoundInfo): void {
 
 async function enterWithSession(joined: JoinResult): Promise<void> {
 	session.value = joined
-	selectedRound.value = pickRound(joined.rounds)
 	initLogger(joined.session_token)
 	// reload/crash recovery: unsynchronized local recordings take priority (brief §20)
 	try {
@@ -54,16 +47,6 @@ async function enterWithSession(joined: JoinResult): Promise<void> {
 		/* recovery scan failure must not block a fresh session */
 	}
 	screen.value = 'preflight'
-}
-
-function pickRound(rounds: RoundInfo[]): RoundInfo | null {
-	const open = rounds.filter((r) => !r.recorded_state)
-	return (
-		open.find((r) => r.status === 'ACTIVE') ??
-		open.find((r) => r.status === 'NOT_STARTED') ??
-		open[0] ??
-		null
-	)
 }
 
 onMounted(async () => {
@@ -161,7 +144,8 @@ function sessionStorageClear(): void {
 		<Preflight
 			v-else-if="screen === 'preflight' && session"
 			:session="session"
-			@ready="afterPreflight" />
+			@ready="screen = 'armed'"
+			@start="startRound" />
 
 		<ArmedScreen
 			v-else-if="screen === 'armed' && session"
@@ -169,71 +153,12 @@ function sessionStorageClear(): void {
 			@start="startRound"
 			@back="screen = 'preflight'" />
 
-		<template v-else-if="screen === 'ready' && session">
-			<div class="rc-scroll">
-				<div class="rc-hero" style="padding-top: 16px; padding-bottom: 8px">
-					<p class="rc-eyebrow">{{ session.assembly.name }}</p>
-					<div class="rc-hero__table">TABLE {{ session.table_number }}</div>
-				</div>
-
-				<template v-if="selectedRound">
-					<div class="rc-card">
-						<p class="rc-eyebrow" style="margin-bottom: 4px">
-							Round {{ selectedRound.position }} of {{ session.rounds.length }} ·
-							{{ selectedRound.duration_minutes }} minutes
-						</p>
-						<p class="rc-question" style="margin: 0">{{ selectedRound.question || selectedRound.title }}</p>
-						<div v-if="session.rounds.length > 1" style="margin-top: 14px">
-							<select
-								style="width: 100%; padding: 11px; border-radius: 10px; background: var(--rc-surface-2); color: var(--rc-text); border: 1px solid var(--rc-border); font-size: 15px"
-								:value="selectedRound.id"
-								@change="selectedRound = session.rounds.find((r) => r.id === ($event.target as HTMLSelectElement).value) ?? selectedRound">
-								<option
-									v-for="round in session.rounds"
-									:key="round.id"
-									:value="round.id"
-									:disabled="!!round.recorded_state">
-									Round {{ round.position }} — {{ round.title || round.question || 'Untitled' }}
-									{{ round.recorded_state ? ' ✓ recorded' : '' }}
-								</option>
-							</select>
-						</div>
-					</div>
-				</template>
-
-				<template v-else-if="session.rounds.length === 0">
-					<div class="rc-alert">This assembly has no rounds yet.</div>
-				</template>
-
-				<template v-else>
-					<div class="rc-card rc-center">
-						<p class="rc-eyebrow">All rounds recorded</p>
-						<p class="rc-muted" style="margin: 0">
-							This table has completed every round. Thank you!
-						</p>
-					</div>
-				</template>
-			</div>
-
-			<div class="rc-actions">
-				<button
-					v-if="selectedRound"
-					class="rc-btn rc-record"
-					:disabled="!!selectedRound.recorded_state"
-					@click="screen = 'recording'">
-					<SvgIcon :path="mdiRecordCircleOutline" :size="22" />
-					Start recording
-				</button>
-				<button class="rc-btn rc-subtle" @click="screen = 'preflight'">Back to microphone test</button>
-			</div>
-		</template>
-
 		<RecordingScreen
 			v-else-if="screen === 'recording' && session && selectedRound"
 			:key="selectedRound.id"
 			:session="session"
 			:round="selectedRound"
-			@exit="screen = orchestrated ? 'armed' : 'ready'"
+			@exit="screen = orchestrated ? 'armed' : 'preflight'"
 			@next-round="startRound" />
 	</div>
 </template>

@@ -122,7 +122,7 @@ export const recorderApi = {
 		request<RecordingStatus>('GET', `/api/v1/public/recorder/recordings/${recordingId}`, { token }),
 
 	liveTranscript: (token: string, recordingId: string) =>
-		request<{ active: boolean; lines: Array<{ t: number; text: string }> }>(
+		request<{ active: boolean; lines: Array<{ t: number; text: string; speaker?: number | null }> }>(
 			'GET',
 			`/api/v1/public/recorder/recordings/${recordingId}/live`,
 			{ token },

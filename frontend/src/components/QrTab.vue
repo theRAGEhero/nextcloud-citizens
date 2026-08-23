@@ -6,6 +6,7 @@ import type { AssemblyDetail, Invite, InviteGenerated } from '../types'
 import CzButton from './ui/CzButton.vue'
 import CzConfirm from './ui/CzConfirm.vue'
 import CzEmptyState from './ui/CzEmptyState.vue'
+import SvgIcon from './ui/SvgIcon.vue'
 import { toast } from './ui/toast'
 
 const props = defineProps<{ assembly: AssemblyDetail; initialGenerated?: InviteGenerated[] }>()
@@ -116,8 +117,17 @@ const hasActive = () => invites.value.some((i) => i.active)
 				<h3>TABLE {{ invite.table_number }}</h3>
 				<div v-html="invite.qr_svg"></div>
 				<p style="font-size: 13px; margin: 0; color: #333">Scan with the table recording phone</p>
-				<div class="cz-qr-url">{{ invite.url }}</div>
-				<CzButton small :icon="mdiContentCopy" @click="copyUrl(invite.url)">Copy link</CzButton>
+				<div class="cz-qr-linkrow">
+					<span class="cz-qr-url" :title="invite.url">{{ invite.url }}</span>
+					<button
+						class="cz-qr-copy"
+						type="button"
+						aria-label="Copy link"
+						title="Copy link"
+						@click="copyUrl(invite.url)">
+						<SvgIcon :path="mdiContentCopy" :size="15" />
+					</button>
+				</div>
 			</div>
 		</div>
 

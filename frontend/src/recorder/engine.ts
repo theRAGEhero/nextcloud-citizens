@@ -6,7 +6,7 @@
  */
 
 import { reactive } from 'vue'
-import { recorderApi } from './api'
+import { RecorderApiError, recorderApi } from './api'
 import { idb, type StoredRecording } from './idb'
 import { clientLog } from './logger'
 import { sha256Hex } from './sha'
@@ -49,6 +49,13 @@ export interface EngineState {
 	retryInMs: number
 	serverState: string
 	error: string
+	/** 'gone' = the server definitively no longer knows this recording/session
+	 * (deleted assembly, reset instance) — retrying can never succeed */
+	errorKind: '' | 'gone' | 'transient'
+}
+
+function isGoneError(error: unknown): boolean {
+	return error instanceof RecorderApiError && [401, 403, 404, 410].includes(error.status)
 }
 
 export class RecorderEngine {
@@ -64,6 +71,7 @@ export class RecorderEngine {
 		retryInMs: 0,
 		serverState: '',
 		error: '',
+		errorKind: '',
 	})
 
 	private token = ''
@@ -266,6 +274,17 @@ export class RecorderEngine {
 					this.retryDelay = RETRY_BASE_MS
 					clientLog('info', 'chunk_acked', { seq: chunk.seq, attempts: chunk.attempts })
 				} catch (error) {
+					// while the mic is live we keep retrying no matter what (audio
+					// preservation first); once only syncing remains, a definitive
+					// server rejection is a dead end — surface it instead of looping
+					if (this.state.phase === 'syncing' && isGoneError(error)) {
+						this.state.phase = 'failed'
+						this.state.error = error instanceof Error ? error.message : String(error)
+						this.state.errorKind = 'gone'
+						clientLog('error', 'sync_gone', { error: this.state.error.slice(0, 160) })
+						this.stopMonitors()
+						return
+					}
 					this.state.uploadOnline = false
 					chunk.attempts += 1
 					await idb.putChunk(chunk)
@@ -349,6 +368,7 @@ export class RecorderEngine {
 			await this.pollUntilProcessed()
 		} catch (error) {
 			this.state.error = error instanceof Error ? error.message : String(error)
+			this.state.errorKind = isGoneError(error) ? 'gone' : 'transient'
 			this.state.phase = 'failed'
 			clientLog('error', 'sync_failed', { error: this.state.error.slice(0, 200) })
 		} finally {

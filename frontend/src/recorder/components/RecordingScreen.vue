@@ -52,11 +52,26 @@ function cancelFinishCountdown(): void {
 	finishCountdown.value = 0
 	keepTalking.value = true
 }
-const showLive = ref(false)
-const liveLines = ref<Array<{ t: number; text: string }>>([])
+const showLive = ref(true)
+const liveLines = ref<Array<{ t: number; text: string; speaker?: number | null }>>([])
 const liveChecked = ref(false)
 const captionsBox = ref<HTMLElement | null>(null)
 const nextRound = ref<RoundInfo | null>(null)
+const qbarOpen = ref(false)
+const techOpen = ref(false)
+
+// consecutive caption fragments from the same speaker flow together as one
+// block; a new block starts when the speaker changes
+const captionBlocks = computed(() => {
+	const blocks: Array<{ speaker: number | null; text: string }> = []
+	for (const line of liveLines.value) {
+		const speaker = line.speaker ?? null
+		const last = blocks[blocks.length - 1]
+		if (last && last.speaker === speaker) last.text += ' ' + line.text
+		else blocks.push({ speaker, text: line.text })
+	}
+	return blocks
+})
 
 let nextRoundTimer = 0
 
@@ -160,7 +175,8 @@ onMounted(async () => {
 		} catch {
 			/* offline — round state resumes with the network */
 		}
-	}, 10_000)
+	}, 5000)
+	startLivePoll()
 })
 
 async function reacquireWakeLock(): Promise<void> {
@@ -186,22 +202,20 @@ onBeforeUnmount(() => {
 	document.removeEventListener('visibilitychange', reacquireWakeLock)
 })
 
-function toggleLive(): void {
-	showLive.value = !showLive.value
-	if (showLive.value && !livePollTimer) {
-		const poll = async () => {
-			if (!state.recordingId || state.phase !== 'recording') return
-			try {
-				const result = await recorderApi.liveTranscript(props.session.session_token, state.recordingId)
-				liveLines.value = result.lines.slice(-8)
-				liveChecked.value = true
-			} catch {
-				/* captions are best-effort */
-			}
+function startLivePoll(): void {
+	if (livePollTimer) return
+	const poll = async () => {
+		if (!showLive.value || !state.recordingId || state.phase !== 'recording') return
+		try {
+			const result = await recorderApi.liveTranscript(props.session.session_token, state.recordingId)
+			liveLines.value = result.lines.slice(-40)
+			liveChecked.value = true
+		} catch {
+			/* captions are best-effort */
 		}
-		void poll()
-		livePollTimer = window.setInterval(() => void poll(), 6000)
 	}
+	void poll()
+	livePollTimer = window.setInterval(() => void poll(), 6000)
 }
 
 async function finishRecording(): Promise<void> {
@@ -231,12 +245,12 @@ async function clearSynced(): Promise<void> {
 		</div>
 
 		<template v-else-if="state.phase === 'recording' || state.phase === 'finishing'">
-			<div class="rc-scroll">
-			<div class="rc-card" style="padding: 14px 18px">
-				<p class="rc-eyebrow" style="margin: 0 0 4px">Round {{ round.position }} of {{ session.rounds.length }}</p>
-				<p class="rc-question" style="margin: 0">{{ round.question || round.title }}</p>
-			</div>
+			<button class="rc-qbar" :class="{ 'rc-qbar--open': qbarOpen }" @click="qbarOpen = !qbarOpen">
+				<span class="rc-eyebrow" style="margin: 0">Round {{ round.position }} of {{ session.rounds.length }}</span>
+				<p class="rc-qbar__q">{{ round.question || round.title }}</p>
+			</button>
 
+			<div class="rc-scroll">
 			<div class="rc-timer-wrap">
 				<div class="rc-timer-ring" :class="{ 'rc-timer-ring--live': state.phase === 'recording' }">
 					<span class="rc-timer">{{ elapsed }}</span>
@@ -246,7 +260,22 @@ async function clearSynced(): Promise<void> {
 
 			<div class="rc-level"><div class="rc-level-fill" :style="{ width: level + '%' }"></div></div>
 
-			<div class="rc-card" style="padding: 8px 18px">
+			<button class="rc-techbar" @click="techOpen = !techOpen">
+				<span class="rc-techbar__item">
+					<span class="rc-dot" :class="{ 'rc-dot--bad': state.storageError }"></span>
+					{{ state.storageError ? 'Storage error' : 'Audio safe' }}
+				</span>
+				<span class="rc-techbar__item">
+					<span class="rc-dot" :class="{ 'rc-dot--warn': !state.uploadOnline }"></span>
+					{{ state.uploadOnline ? 'Uploading' : 'Offline' }}
+				</span>
+				<span class="rc-techbar__item">
+					<span class="rc-dot" :class="{ 'rc-dot--warn': pendingChunks > 3 }"></span>
+					{{ pendingChunks }} pending
+				</span>
+			</button>
+
+			<div v-if="techOpen" class="rc-card" style="padding: 8px 18px">
 				<div class="rc-status-row">
 					<span class="rc-status-row__label">
 						<SvgIcon :path="mdiDatabaseOutline" :size="19" style="color: var(--rc-muted)" />
@@ -307,19 +336,24 @@ async function clearSynced(): Promise<void> {
 			</div>
 
 			<template v-if="state.phase === 'recording'">
-				<button class="rc-btn rc-subtle" @click="toggleLive">
-					<SvgIcon :path="mdiBroadcast" :size="18" />
-					{{ showLive ? 'Hide live transcript' : 'Show live transcript' }}
-				</button>
 				<div v-if="showLive" class="rc-card">
 					<p class="rc-eyebrow">Live transcript — provisional</p>
-					<p v-if="liveLines.length === 0" class="rc-muted" style="font-size: 14px; margin: 0">
+					<p v-if="captionBlocks.length === 0" class="rc-muted" style="font-size: 14px; margin: 0">
 						{{ liveChecked ? 'Live captions temporarily unavailable. Recording continues safely.' : 'Waiting for captions…' }}
 					</p>
 					<div v-else ref="captionsBox" class="rc-captions">
-						<p v-for="(line, index) in liveLines" :key="index" class="rc-caption">{{ line.text }}</p>
+						<div v-for="(block, index) in captionBlocks" :key="index" class="rc-caption">
+							<span v-if="block.speaker !== null" class="rc-caption__speaker">
+								Speaker {{ block.speaker + 1 }}
+							</span>
+							{{ block.text }}
+						</div>
 					</div>
 				</div>
+				<button class="rc-btn rc-subtle" @click="showLive = !showLive">
+					<SvgIcon :path="mdiBroadcast" :size="18" />
+					{{ showLive ? 'Hide live transcript' : 'Show live transcript' }}
+				</button>
 			</template>
 			</div>
 
@@ -385,7 +419,7 @@ async function clearSynced(): Promise<void> {
 					@click="emit('nextRound', nextRound)">
 					Start recording — Round {{ nextRound.position }}
 				</button>
-				<button v-if="!clearedNote" class="rc-btn rc-subtle" @click="clearSynced">
+				<button v-if="!clearedNote" class="rc-linkbtn" @click="clearSynced">
 					Clear synchronized audio from this phone
 				</button>
 			</div>
