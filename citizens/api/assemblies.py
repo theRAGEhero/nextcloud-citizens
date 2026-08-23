@@ -11,6 +11,7 @@ from citizens.db.session import get_db
 from citizens.domain import schemas
 from citizens.security.identity import CurrentUser
 from citizens.services import assemblies as svc
+from citizens.services import invites as invite_svc
 from citizens.services import rounds as rounds_svc
 from citizens.services.audit import record_audit_event
 
@@ -28,11 +29,17 @@ def list_assemblies(user: CurrentUser, session: DB):
     )
 
 
-@router.post("/assemblies", response_model=schemas.AssemblyDetail, status_code=201)
+@router.post("/assemblies", response_model=schemas.AssemblyCreated, status_code=201)
 def create_assembly(data: schemas.AssemblyCreate, user: CurrentUser, session: DB):
     assembly = svc.create_assembly(session, user, data)
-    record_audit_event(session, "assembly_created", "assembly", assembly.id, actor=user)
-    return _detail(session, assembly)
+    # QR codes exist by default; the raw links live only in this response
+    invites = invite_svc.generate_invites(session, assembly)
+    record_audit_event(
+        session, "assembly_created", "assembly", assembly.id, actor=user,
+        data={"invites": len(invites)},
+    )
+    detail = _detail(session, assembly)
+    return schemas.AssemblyCreated(**detail.model_dump(), invites=invites)
 
 
 @router.get("/assemblies/{assembly_id}", response_model=schemas.AssemblyDetail)

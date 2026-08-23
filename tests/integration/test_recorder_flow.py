@@ -43,6 +43,7 @@ def recorder(client):
             "rounds": [{"title": "R1", "question": "Q?", "duration_minutes": 30}],
         },
     ).json()
+    client.post(f"/api/v1/rounds/{assembly['rounds'][0]['id']}/start")
     invites = client.post(f"/api/v1/assemblies/{assembly['id']}/invites/generate").json()
     token = re.search(r"#/join/(.+)$", invites[0]["url"]).group(1)
     joined = client.post(

@@ -33,6 +33,7 @@ def create_assembly(session: Session, user_id: str, data: schemas.AssemblyCreate
         description=data.description,
         language=data.language,
         scheduled_at=data.scheduled_at,
+        recording_mode=data.recording_mode,
         expected_participants=data.expected_participants,
         default_table_count=data.default_table_count,
         created_by=user_id,

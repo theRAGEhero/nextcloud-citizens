@@ -77,6 +77,13 @@ def start_recording(
     if table is None:
         raise HTTPException(status_code=422, detail="This round has no table with your number")
 
+    # orchestrated assemblies record only while the facilitator has the round
+    # open; independent assemblies let each table record on its own schedule
+    if round_.assembly.recording_mode == "orchestrated" and round_.status != "ACTIVE":
+        raise HTTPException(
+            status_code=409, detail="The facilitator has not started this round yet"
+        )
+
     # one healthy recording per table+round: prevents accidental extra
     # recordings after a table already finished (unless the earlier attempt failed)
     existing = session.execute(

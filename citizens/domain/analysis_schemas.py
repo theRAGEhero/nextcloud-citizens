@@ -23,6 +23,9 @@ class TableFindingItem(BaseModel):
 
 
 class TableAnalysis(BaseModel):
+    # ALWAYS produced: a neutral 2–4 sentence description of the discussion,
+    # even when there are no substantive findings
+    summary: str = Field(min_length=10, max_length=1500)
     findings: list[TableFindingItem] = Field(max_length=40)
 
 
@@ -34,4 +37,5 @@ class RoundClusterItem(BaseModel):
 
 
 class RoundAnalysis(BaseModel):
+    summary: str = Field(min_length=10, max_length=1500)
     clusters: list[RoundClusterItem] = Field(max_length=40)

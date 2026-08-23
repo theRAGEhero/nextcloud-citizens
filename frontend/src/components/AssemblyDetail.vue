@@ -12,7 +12,7 @@ import {
 } from '@mdi/js'
 import { onMounted, ref } from 'vue'
 import { api } from '../api'
-import type { AssemblyDetail } from '../types'
+import type { AssemblyDetail, InviteGenerated } from '../types'
 import AnalysisTab from './AnalysisTab.vue'
 import OverviewTab from './OverviewTab.vue'
 import ParticipantsTab from './ParticipantsTab.vue'
@@ -28,14 +28,15 @@ import CzStatusPill from './ui/CzStatusPill.vue'
 import SvgIcon from './ui/SvgIcon.vue'
 import { toast } from './ui/toast'
 
-const props = defineProps<{ assemblyId: string }>()
-const emit = defineEmits<{ changed: []; deleted: [] }>()
+const props = defineProps<{ assemblyId: string; freshInvites?: InviteGenerated[] }>()
+const emit = defineEmits<{ changed: []; deleted: []; invitesConsumed: [] }>()
 
 type Tab = 'overview' | 'rounds' | 'participants' | 'tables' | 'qr' | 'monitor' | 'analysis' | 'report'
 
 const assembly = ref<AssemblyDetail | null>(null)
 const error = ref('')
-const tab = ref<Tab>('overview')
+// a freshly created assembly lands on its printable QR sheet
+const tab = ref<Tab>(props.freshInvites?.length ? 'qr' : 'overview')
 const confirmDelete = ref(false)
 
 const TABS: Array<{ id: Tab; label: string; icon: string }> = [
@@ -116,7 +117,11 @@ async function deleteAssembly(): Promise<void> {
 			<RoundsTab v-else-if="tab === 'rounds'" :assembly="assembly" @changed="reload" />
 			<ParticipantsTab v-else-if="tab === 'participants'" :assembly-id="assembly.id" @changed="reload" />
 			<TablesTab v-else-if="tab === 'tables'" :assembly="assembly" />
-			<QrTab v-else-if="tab === 'qr'" :assembly="assembly" />
+			<QrTab
+				v-else-if="tab === 'qr'"
+				:assembly="assembly"
+				:initial-generated="freshInvites"
+				@consumed="emit('invitesConsumed')" />
 			<MonitorTab v-else-if="tab === 'monitor'" :assembly="assembly" @changed="reload" />
 			<AnalysisTab v-else-if="tab === 'analysis'" :assembly="assembly" />
 			<ReportTab v-else :assembly="assembly" />

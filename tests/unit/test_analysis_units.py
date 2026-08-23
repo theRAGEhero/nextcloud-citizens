@@ -41,11 +41,13 @@ def test_extract_json_handles_fences_and_prose():
 def test_table_schema_requires_evidence():
     with pytest.raises(ValidationError):
         TableAnalysis.model_validate(
-            {"findings": [{"type": "proposal", "title": "Better buses", "summary": "x" * 5,
+            {"summary": "A table discussion about buses.",
+             "findings": [{"type": "proposal", "title": "Better buses", "summary": "x" * 5,
                            "evidence_segment_ids": []}]}
         )
     valid = TableAnalysis.model_validate(
-        {"findings": [{"type": "proposal", "title": "Better buses", "summary": "Extend service.",
+        {"summary": "A table discussion about buses.",
+         "findings": [{"type": "proposal", "title": "Better buses", "summary": "Extend service.",
                        "evidence_segment_ids": ["seg-1"]}]}
     )
     assert valid.findings[0].type == "proposal"
@@ -54,6 +56,12 @@ def test_table_schema_requires_evidence():
 def test_table_schema_rejects_unknown_type():
     with pytest.raises(ValidationError):
         TableAnalysis.model_validate(
-            {"findings": [{"type": "vibe", "title": "ttt", "summary": "sss",
+            {"summary": "A table discussion about something.",
+             "findings": [{"type": "vibe", "title": "ttt", "summary": "sss",
                            "evidence_segment_ids": ["seg-1"]}]}
         )
+
+
+def test_table_schema_requires_summary():
+    with pytest.raises(ValidationError):
+        TableAnalysis.model_validate({"findings": []})

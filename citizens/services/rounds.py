@@ -80,12 +80,14 @@ def round_monitor(session: Session, round_: Round) -> dict:
         local_safe = bool(
             device["connected"] and device["status"].get("storage_ok") is True
         )
+        armed = bool(device["connected"] and device["status"].get("armed") is True)
 
         tables.append(
             {
                 "table_id": table.id,
                 "number": table.number,
                 "device": device,
+                "armed": armed,
                 "local_recording_safe": local_safe,
                 "recording": None
                 if recording is None
@@ -104,5 +106,8 @@ def round_monitor(session: Session, round_: Round) -> dict:
         "status": round_.status,
         "started_at": round_.started_at,
         "duration_minutes": round_.duration_minutes,
+        "recording_mode": round_.assembly.recording_mode,
+        "tables_ready": sum(1 for t in tables if t["armed"]),
+        "tables_total": len(tables),
         "tables": tables,
     }

@@ -44,9 +44,11 @@ class ProvidersUpdate(BaseModel):
     stt_live_enabled: bool | None = None
     stt_batch_enabled: bool | None = None
     mistral_api_key: str | None = Field(default=None, max_length=500)
-    mistral_stt_model: str | None = Field(default=None, max_length=100)
+    mistral_live_model: str | None = Field(default=None, max_length=100)
+    mistral_batch_model: str | None = Field(default=None, max_length=100)
     deepgram_api_key: str | None = Field(default=None, max_length=500)
-    deepgram_model: str | None = Field(default=None, max_length=100)
+    deepgram_live_model: str | None = Field(default=None, max_length=100)
+    deepgram_batch_model: str | None = Field(default=None, max_length=100)
     analysis_base_url: str | None = Field(default=None, max_length=500)
     analysis_model: str | None = Field(default=None, max_length=200)
     analysis_api_key: str | None = Field(default=None, max_length=500)

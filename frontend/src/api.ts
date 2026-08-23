@@ -1,5 +1,6 @@
 import type {
 	Assembly,
+	AssemblyCreated,
 	AssemblyDetail,
 	Invite,
 	InviteGenerated,
@@ -66,10 +67,11 @@ export const api = {
 		name: string
 		description: string
 		language: string
+		recording_mode: 'orchestrated' | 'independent'
 		expected_participants: number
 		default_table_count: number
 		rounds: RoundIn[]
-	}) => request<AssemblyDetail>('POST', '/api/v1/assemblies', data),
+	}) => request<AssemblyCreated>('POST', '/api/v1/assemblies', data),
 	getAssembly: (id: string) => request<AssemblyDetail>('GET', `/api/v1/assemblies/${id}`),
 	deleteAssembly: (id: string) => request<void>('DELETE', `/api/v1/assemblies/${id}`),
 

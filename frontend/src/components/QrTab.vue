@@ -8,10 +8,12 @@ import CzConfirm from './ui/CzConfirm.vue'
 import CzEmptyState from './ui/CzEmptyState.vue'
 import { toast } from './ui/toast'
 
-const props = defineProps<{ assembly: AssemblyDetail }>()
+const props = defineProps<{ assembly: AssemblyDetail; initialGenerated?: InviteGenerated[] }>()
+const emit = defineEmits<{ consumed: [] }>()
 
 const invites = ref<Invite[]>([])
-const generated = ref<InviteGenerated[]>([])
+// QR codes auto-generated at assembly creation arrive via initialGenerated
+const generated = ref<InviteGenerated[]>(props.initialGenerated ?? [])
 const error = ref('')
 const busy = ref(false)
 const confirmRevoke = ref(false)
@@ -20,7 +22,11 @@ async function reload(): Promise<void> {
 	invites.value = await api.listInvites(props.assembly.id)
 }
 
-onMounted(reload)
+onMounted(() => {
+	void reload()
+	// local copy taken; the parent can clear its one-time handoff
+	if (props.initialGenerated?.length) emit('consumed')
+})
 
 async function generate(): Promise<void> {
 	busy.value = true

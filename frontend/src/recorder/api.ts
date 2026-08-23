@@ -17,16 +17,23 @@ export interface RoundInfo {
 	recorded_state?: string | null
 }
 
+export interface AssemblyInfo {
+	id: string
+	name: string
+	language: string
+	recording_mode: 'orchestrated' | 'independent'
+}
+
 export interface JoinResult {
 	session_token: string
 	expires_at: string
-	assembly: { id: string; name: string; language: string }
+	assembly: AssemblyInfo
 	table_number: number
 	rounds: RoundInfo[]
 }
 
 export interface RecorderStatus {
-	assembly: { id: string; name: string; language: string }
+	assembly: AssemblyInfo
 	table_number: number
 	rounds: RoundInfo[]
 }
@@ -126,6 +133,7 @@ export const recorderApi = {
 		payload: {
 			recording_id?: string
 			recording_active: boolean
+			armed?: boolean
 			local_chunks: number
 			acked_chunks: number
 			storage_ok: boolean

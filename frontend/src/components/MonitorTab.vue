@@ -11,6 +11,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
 import type { AssemblyDetail, MonitorTable, RoundMonitor, TranscriptData } from '../types'
 import CzButton from './ui/CzButton.vue'
+import CzConfirm from './ui/CzConfirm.vue'
 import CzSkeleton from './ui/CzSkeleton.vue'
 import CzStatusPill from './ui/CzStatusPill.vue'
 import SvgIcon from './ui/SvgIcon.vue'
@@ -26,6 +27,7 @@ const monitor = ref<RoundMonitor | null>(null)
 const error = ref('')
 const busy = ref(false)
 const now = ref(Date.now())
+const confirmStartUnready = ref(false)
 const openTable = ref<number | null>(null)
 const deviceLog = ref<string[]>([])
 const transcript = ref<TranscriptData | null>(null)
@@ -91,7 +93,20 @@ async function run(action: () => Promise<unknown>, note = ''): Promise<void> {
 	}
 }
 
-const startRound = () => run(() => api.startRound(roundId.value), 'Round started')
+function startRound(): void {
+	// orchestrated: warn (never block) when tables haven't armed yet
+	if (
+		monitor.value?.recording_mode === 'orchestrated' &&
+		monitor.value.tables_ready < monitor.value.tables_total &&
+		!confirmStartUnready.value
+	) {
+		confirmStartUnready.value = true
+		return
+	}
+	confirmStartUnready.value = false
+	void run(() => api.startRound(roundId.value), 'Round started — armed tables are now recording')
+}
+
 const endRound = () => run(() => api.endRound(roundId.value), 'Round ended')
 
 async function showTranscript(recordingId: string): Promise<void> {
@@ -139,6 +154,7 @@ function speakerClass(speaker: string): string {
 }
 
 function deviceState(table: MonitorTable): { status: string; label: string } {
+	if (table.armed) return { status: 'CONNECTED', label: 'armed' }
 	if (table.device.connected) return { status: 'CONNECTED', label: 'connected' }
 	if (table.device.seconds_since_contact !== null)
 		return { status: 'STALE', label: `${table.device.seconds_since_contact}s ago` }
@@ -162,28 +178,49 @@ function pendingChunks(table: MonitorTable): number {
 			</select>
 			<template v-if="monitor">
 				<CzStatusPill :status="monitor.status" />
+				<span
+					v-if="monitor.recording_mode === 'orchestrated'"
+					class="cz-pill"
+					:class="monitor.tables_ready === monitor.tables_total ? 'cz-pill--green' : 'cz-pill--amber'"
+					style="text-transform: none">
+					{{ monitor.tables_ready }}/{{ monitor.tables_total }} tables ready
+				</span>
 				<div class="cz-countbar__track">
 					<div class="cz-countbar__fill" :style="{ width: progress + '%' }"></div>
 				</div>
 				<span v-if="remaining" class="cz-countbar__time">{{ remaining }}</span>
-				<CzButton
-					v-if="monitor.status === 'NOT_STARTED' || monitor.status === 'ENDED'"
-					variant="primary"
-					:icon="mdiPlay"
-					:disabled="busy"
-					@click="startRound">
-					Start round
-				</CzButton>
-				<CzButton
-					v-else-if="monitor.status === 'ACTIVE'"
-					variant="danger"
-					:icon="mdiStop"
-					:disabled="busy"
-					@click="endRound">
-					End round
-				</CzButton>
+				<template v-if="monitor.recording_mode === 'orchestrated'">
+					<CzButton
+						v-if="monitor.status === 'NOT_STARTED' || monitor.status === 'ENDED'"
+						variant="primary"
+						:icon="mdiPlay"
+						:disabled="busy"
+						@click="startRound">
+						Start round
+					</CzButton>
+					<CzButton
+						v-else-if="monitor.status === 'ACTIVE'"
+						variant="danger"
+						:icon="mdiStop"
+						:disabled="busy"
+						@click="endRound">
+						End round
+					</CzButton>
+				</template>
+				<span v-else class="cz-muted" style="font-size: 13px">
+					Independent tables — each table records on its own schedule
+				</span>
 			</template>
 		</div>
+
+		<CzConfirm
+			v-if="confirmStartUnready && monitor"
+			title="Start with tables missing?"
+			:message="`Only ${monitor.tables_ready} of ${monitor.tables_total} tables are armed and ready. Tables that arm later can still join the round. Start anyway?`"
+			confirm-label="Start round"
+			:danger="false"
+			@confirm="startRound"
+			@cancel="confirmStartUnready = false" />
 
 		<CzSkeleton v-if="!monitor" :rows="5" />
 

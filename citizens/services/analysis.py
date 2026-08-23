@@ -79,19 +79,23 @@ def _analysis_config(store: provider_config.ConfigStore) -> tuple[str, str, str]
 
 
 TABLE_SYSTEM = """You are an analyst supporting an in-person citizens' assembly.
-You extract structured findings from ONE table's discussion transcript.
+You analyze ONE table's discussion transcript.
 
 Rules:
-- Respond with ONLY a JSON object: {{"findings": [{{"type": ..., "title": ...,
-  "summary": ..., "support": ..., "evidence_segment_ids": [...]}}]}}
+- Respond with ONLY a JSON object: {{"summary": "...", "findings": [{{"type": ...,
+  "title": ..., "summary": ..., "support": ..., "evidence_segment_ids": [...]}}]}}
+- "summary" (top level) is ALWAYS required: a neutral 2-4 sentence description
+  of what the table actually discussed — even if it was small talk or off the
+  round question. Never leave it out.
 - "type" is one of: proposal, agreement, disagreement, concern, question,
   minority_position, new_idea.
 - "support" (optional) is one of: strong, mixed, weak, unclear.
 - EVERY finding MUST cite at least one evidence_segment_ids value copied
   EXACTLY from the segment ids in the transcript. Never invent ids.
 - Only report what participants actually said. Do not invent content.
-- If the transcript contains nothing substantive, return {{"findings": []}}.
-- Write titles and summaries in {language}."""
+- If the discussion contains nothing substantive for the round question,
+  return {{"summary": "...", "findings": []}}.
+- Write everything in {language}."""
 
 ROUND_SYSTEM = """You are an analyst supporting an in-person citizens' assembly.
 You aggregate findings from multiple discussion tables of the SAME round into
@@ -99,15 +103,17 @@ cross-table clusters (recurring proposals, shared concerns, disagreements,
 minority positions, questions, unique new ideas).
 
 Rules:
-- Respond with ONLY a JSON object: {{"clusters": [{{"type": ..., "title": ...,
-  "summary": ..., "source_finding_ids": [...]}}]}}
+- Respond with ONLY a JSON object: {{"summary": "...", "clusters": [{{"type": ...,
+  "title": ..., "summary": ..., "source_finding_ids": [...]}}]}}
+- "summary" (top level) is ALWAYS required: a neutral 2-4 sentence overview of
+  the round across all tables.
 - "type" is one of: proposal, agreement, disagreement, concern, question,
   minority_position, new_idea.
 - EVERY cluster MUST list source_finding_ids copied EXACTLY from the finding
   ids provided. Never invent ids.
 - Never state or imply percentages of participant support; tables are not
   votes.
-- Write titles and summaries in {language}."""
+- Write everything in {language}."""
 
 
 def analyze_table(session: Session, store: provider_config.ConfigStore, recording: Recording) -> int:
@@ -121,6 +127,7 @@ def analyze_table(session: Session, store: provider_config.ConfigStore, recordin
     _delete_existing(session, recording_id=recording.id, scope="table", only_drafts=True)
 
     if not transcript.segments:
+        recording.analysis_summary = "No speech was detected in this recording."
         log.info("analysis_empty_transcript", recording_id=recording.id)
         return 0
 
@@ -147,6 +154,7 @@ def analyze_table(session: Session, store: provider_config.ConfigStore, recordin
     result = chat_json(
         base_url, key, model, TABLE_SYSTEM.format(language=language), user_prompt, TableAnalysis
     )
+    recording.analysis_summary = result.summary
 
     stored = 0
     dropped = 0
@@ -195,6 +203,19 @@ def analyze_round(session: Session, store: provider_config.ConfigStore, round_: 
     )
     _delete_existing(session, round_id=round_.id, scope="round", only_drafts=True)
     if not table_findings:
+        summaries = [
+            f"Table {rec.table_number}: {rec.analysis_summary}"
+            for rec in session.execute(
+                select(Recording).where(
+                    Recording.round_id == round_.id, Recording.analysis_summary != ""
+                )
+            ).scalars()
+        ]
+        round_.analysis_summary = (
+            " ".join(summaries)[:1500]
+            if summaries
+            else "No substantive findings emerged from this round's discussions."
+        )
         log.info("analysis_round_no_findings", round_id=round_.id)
         return 0
 
@@ -221,6 +242,7 @@ def analyze_round(session: Session, store: provider_config.ConfigStore, round_: 
     result = chat_json(
         base_url, key, model, ROUND_SYSTEM.format(language=language), user_prompt, RoundAnalysis
     )
+    round_.analysis_summary = result.summary
 
     stored = 0
     for cluster in result.clusters:

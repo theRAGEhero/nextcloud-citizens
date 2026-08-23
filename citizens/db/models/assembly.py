@@ -20,6 +20,9 @@ class Assembly(Base):
     language: Mapped[str] = mapped_column(String(10), default="en")
     scheduled_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     status: Mapped[str] = mapped_column(String(20), default="DRAFT")
+    # "orchestrated": facilitator starts/ends rounds for all tables at once;
+    # "independent": each table records the shared questions on its own schedule
+    recording_mode: Mapped[str] = mapped_column(String(16), default="orchestrated")
     expected_participants: Mapped[int] = mapped_column(Integer, default=0)
     default_table_count: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[str] = mapped_column(String(64), index=True)
@@ -49,6 +52,7 @@ class Round(Base):
     question: Mapped[str] = mapped_column(Text, default="")
     duration_minutes: Mapped[int] = mapped_column(Integer, default=30)
     status: Mapped[str] = mapped_column(String(20), default="NOT_STARTED")
+    analysis_summary: Mapped[str] = mapped_column(Text, default="")
     started_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     ended_at: Mapped[datetime | None] = mapped_column(TZDateTime())
 

@@ -33,9 +33,9 @@ def live_stt_snapshot() -> dict:
             "api_key": store.get_value(f"{provider}_api_key")
             if provider == "deepgram"
             else store.get_value("mistral_api_key"),
-            "model": get_setting(store, "deepgram_model")
+            "model": get_setting(store, "deepgram_live_model")
             if provider == "deepgram"
-            else get_setting(store, "mistral_stt_model"),
+            else get_setting(store, "mistral_live_model"),
         }
     except Exception:
         log.warning("live_stt_snapshot_failed", exc_info=True)
@@ -54,12 +54,22 @@ DEFAULTS = {
     "stt_provider": "mistral",
     "stt_live_enabled": "1",
     "stt_batch_enabled": "1",
-    # model IDs verified against provider docs 2026-08-23
-    "deepgram_model": "nova-3",
-    "mistral_stt_model": "voxtral-mini-latest",
+    # model IDs verified against provider docs 2026-08-23; live and final
+    # (batch) transcription models are configured separately per provider
+    "deepgram_live_model": "nova-3",
+    "deepgram_batch_model": "nova-3",
+    "mistral_live_model": "",  # Voxtral Realtime — not wired yet
+    "mistral_batch_model": "voxtral-mini-latest",
     "analysis_base_url": "https://api.mistral.ai/v1",
     "analysis_model": "mistral-large-latest",
     "analysis_enabled": "1",
+}
+
+# reads of the new split keys fall back to the pre-split stored values
+LEGACY_KEYS = {
+    "deepgram_live_model": "deepgram_model",
+    "deepgram_batch_model": "deepgram_model",
+    "mistral_batch_model": "mistral_stt_model",
 }
 
 
@@ -97,6 +107,8 @@ class AppConfigStore:
 
 def get_setting(store: ConfigStore, key: str) -> str:
     value = store.get_value(key)
+    if (value is None or value == "") and key in LEGACY_KEYS:
+        value = store.get_value(LEGACY_KEYS[key])
     if value is None or value == "":
         return DEFAULTS.get(key, "")
     return value
@@ -131,10 +143,12 @@ def providers_summary(store: ConfigStore) -> dict:
             "batch_enabled": get_setting(store, "stt_batch_enabled") == "1",
             "mistral_configured": bool(store.get_value("mistral_api_key")),
             "mistral_key_hint": key_hint(store, "mistral_api_key"),
-            "mistral_model": get_setting(store, "mistral_stt_model"),
+            "mistral_live_model": get_setting(store, "mistral_live_model"),
+            "mistral_batch_model": get_setting(store, "mistral_batch_model"),
             "deepgram_configured": bool(store.get_value("deepgram_api_key")),
             "deepgram_key_hint": key_hint(store, "deepgram_api_key"),
-            "deepgram_model": get_setting(store, "deepgram_model"),
+            "deepgram_live_model": get_setting(store, "deepgram_live_model"),
+            "deepgram_batch_model": get_setting(store, "deepgram_batch_model"),
         },
         "analysis": {
             "base_url": get_setting(store, "analysis_base_url"),

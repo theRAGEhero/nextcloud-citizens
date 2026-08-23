@@ -16,9 +16,11 @@ const sttProvider = ref<'mistral' | 'deepgram'>('mistral')
 const liveEnabled = ref(true)
 const batchEnabled = ref(true)
 const mistralKey = ref('')
-const mistralModel = ref('')
+const mistralLiveModel = ref('')
+const mistralBatchModel = ref('')
 const deepgramKey = ref('')
-const deepgramModel = ref('')
+const deepgramLiveModel = ref('')
+const deepgramBatchModel = ref('')
 const analysisBaseUrl = ref('')
 const analysisModel = ref('')
 const analysisKey = ref('')
@@ -30,8 +32,10 @@ async function reload(): Promise<void> {
 	sttProvider.value = summary.value.stt.provider
 	liveEnabled.value = summary.value.stt.live_enabled
 	batchEnabled.value = summary.value.stt.batch_enabled
-	mistralModel.value = summary.value.stt.mistral_model
-	deepgramModel.value = summary.value.stt.deepgram_model
+	mistralLiveModel.value = summary.value.stt.mistral_live_model
+	mistralBatchModel.value = summary.value.stt.mistral_batch_model
+	deepgramLiveModel.value = summary.value.stt.deepgram_live_model
+	deepgramBatchModel.value = summary.value.stt.deepgram_batch_model
 	analysisBaseUrl.value = summary.value.analysis.base_url
 	analysisModel.value = summary.value.analysis.model
 	analysisEnabled.value = summary.value.analysis.enabled
@@ -53,8 +57,10 @@ async function save(): Promise<void> {
 			stt_provider: sttProvider.value,
 			stt_live_enabled: liveEnabled.value,
 			stt_batch_enabled: batchEnabled.value,
-			mistral_stt_model: mistralModel.value.trim(),
-			deepgram_model: deepgramModel.value.trim(),
+			mistral_live_model: mistralLiveModel.value.trim(),
+			mistral_batch_model: mistralBatchModel.value.trim(),
+			deepgram_live_model: deepgramLiveModel.value.trim(),
+			deepgram_batch_model: deepgramBatchModel.value.trim(),
 			analysis_base_url: analysisBaseUrl.value.trim(),
 			analysis_model: analysisModel.value.trim(),
 			analysis_enabled: analysisEnabled.value,
@@ -152,8 +158,13 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 						</span>
 					</div>
 					<div class="cz-field">
-						<label>Mistral transcription model</label>
-						<input v-model="mistralModel" type="text" placeholder="voxtral-mini-latest" />
+						<label>Mistral — final transcription model</label>
+						<input v-model="mistralBatchModel" type="text" placeholder="voxtral-mini-latest" />
+					</div>
+					<div class="cz-field">
+						<label>Mistral — live transcription model</label>
+						<input v-model="mistralLiveModel" type="text" placeholder="Voxtral Realtime — not yet active" />
+						<span class="cz-muted" style="font-size: 12px">Live captions with Mistral are not wired up yet.</span>
 					</div>
 					<div class="cz-field">
 						<label>Deepgram API key</label>
@@ -172,8 +183,12 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 						</span>
 					</div>
 					<div class="cz-field">
-						<label>Deepgram model</label>
-						<input v-model="deepgramModel" type="text" placeholder="nova-3" />
+						<label>Deepgram — final transcription model</label>
+						<input v-model="deepgramBatchModel" type="text" placeholder="nova-3" />
+					</div>
+					<div class="cz-field">
+						<label>Deepgram — live transcription model</label>
+						<input v-model="deepgramLiveModel" type="text" placeholder="nova-3" />
 					</div>
 				</div>
 

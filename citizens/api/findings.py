@@ -67,19 +67,27 @@ def round_findings(round_id: str, user: CurrentUser, session: DB):
             .order_by(Finding.created_at)
         ).scalars()
     )
-    recordings = {
-        rec.table_number: {"id": rec.id, "state": rec.state}
+    recordings_full = {
+        rec.table_number: rec
         for rec in session.execute(
             select(Recording).where(Recording.round_id == round_.id).order_by(Recording.created_at)
         ).scalars()
     }
+    recordings = {
+        number: {"id": rec.id, "state": rec.state} for number, rec in recordings_full.items()
+    }
     tables_payload = []
     for table in round_.tables:
         table_findings = [f for f in findings if f.scope == "table" and f.table_id == table.id]
+        recording = recordings_full.get(table.number)
         tables_payload.append(
             {
                 "table_number": table.number,
                 "recording": recordings.get(table.number),
+                "summary": recording.analysis_summary if recording else "",
+                "analyzed": bool(
+                    recording and recording.state in ("READY_FOR_REVIEW", "REVIEWED")
+                ),
                 "findings": [_finding_payload(session, f, table_numbers) for f in table_findings],
             }
         )
@@ -87,6 +95,7 @@ def round_findings(round_id: str, user: CurrentUser, session: DB):
     return {
         "round_id": round_.id,
         "round_status": round_.status,
+        "round_summary": round_.analysis_summary,
         "analysis_configured": analysis_ready(provider_config.default_store()),
         "tables_with_findings": total_tables,
         "cross_table": [

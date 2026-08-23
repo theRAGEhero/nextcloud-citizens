@@ -130,6 +130,7 @@ def recording_status(recording_id: str, recorder_session: RecorderSess, session:
 class HeartbeatIn(BaseModel):
     recording_id: str | None = None
     recording_active: bool = False
+    armed: bool = False
     local_chunks: int = Field(default=0, ge=0)
     acked_chunks: int = Field(default=0, ge=0)
     storage_ok: bool = True
@@ -188,7 +189,12 @@ def _assembly_state(session: Session, recorder_session: RecorderSession) -> dict
     ).scalars():
         recorded_rounds[recording.round_id] = recording.state
     return {
-        "assembly": {"id": assembly.id, "name": assembly.name, "language": assembly.language},
+        "assembly": {
+            "id": assembly.id,
+            "name": assembly.name,
+            "language": assembly.language,
+            "recording_mode": assembly.recording_mode,
+        },
         "table_number": recorder_session.table_number,
         "rounds": [
             {

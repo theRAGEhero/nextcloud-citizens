@@ -29,8 +29,8 @@ async function startRecording(page: Page, token: string): Promise<void> {
 	await expect(page.getByText('Microphone test')).toBeVisible({ timeout: 15_000 })
 	await expect(page.getByRole('button', { name: 'READY' })).toBeEnabled({ timeout: 15_000 })
 	await page.getByRole('button', { name: 'READY' }).click()
-	await page.getByRole('button', { name: /Start recording/ }).click()
-	await expect(page.getByText('RECORDING', { exact: true })).toBeVisible({ timeout: 15_000 })
+	// orchestrated mode: the armed phone auto-starts (seeded round is ACTIVE)
+	await expect(page.getByText('RECORDING', { exact: true })).toBeVisible({ timeout: 20_000 })
 }
 
 async function localChunkCount(page: Page): Promise<number> {

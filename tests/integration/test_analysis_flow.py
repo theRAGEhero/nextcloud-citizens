@@ -60,6 +60,7 @@ def pipeline(client, tmp_path, monkeypatch):
             # cite the first segment id embedded in the prompt: "[id1|id2] SPEAKER..."
             first_ids = re.search(r"\[([0-9a-f|-]+)\]", user).group(1)
             return TableAnalysis.model_validate({
+                "summary": "The table discussed evening bus service and possible alternatives.",
                 "findings": [
                     {"type": "proposal", "title": "Extend evening bus service",
                      "summary": "Buses should run later, especially weekends.",
@@ -72,6 +73,7 @@ def pipeline(client, tmp_path, monkeypatch):
         calls["round"] += 1
         finding_id = re.search(r"\[([0-9a-f-]{36})\]", user).group(1)
         return RoundAnalysis.model_validate({
+            "summary": "Across tables, extending evening bus service was the main topic.",
             "clusters": [{"type": "proposal", "title": "Later buses (recurring)",
                           "summary": "Raised across tables.", "source_finding_ids": [finding_id]}]
         })
@@ -83,6 +85,7 @@ def pipeline(client, tmp_path, monkeypatch):
         json={"name": "TEST Analysis", "default_table_count": 1,
               "rounds": [{"title": "R1", "question": "Transport?", "duration_minutes": 30}]},
     ).json()
+    client.post(f"/api/v1/rounds/{assembly['rounds'][0]['id']}/start")
     invites = client.post(f"/api/v1/assemblies/{assembly['id']}/invites/generate").json()
     token = re.search(r"#/join/(.+)$", invites[0]["url"]).group(1)
     joined = client.post("/api/v1/public/join", json={"token": token},

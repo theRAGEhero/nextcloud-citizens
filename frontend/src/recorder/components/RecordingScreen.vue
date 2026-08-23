@@ -21,7 +21,37 @@ const confirmFinish = ref(false)
 const level = ref(0)
 const startError = ref('')
 const roundEnded = ref(false)
+const finishCountdown = ref(0)
+const keepTalking = ref(false)
+const nextStartCountdown = ref(0)
 const clearedNote = ref('')
+
+const orchestrated = props.session.assembly.recording_mode === 'orchestrated'
+
+let countdownTimer = 0
+let nextStartTimer = 0
+
+// orchestrated: the facilitator ended the round → auto-finish after a short
+// cancellable countdown so a last sentence can be completed
+function beginFinishCountdown(): void {
+	if (countdownTimer || keepTalking.value) return
+	finishCountdown.value = 15
+	countdownTimer = window.setInterval(() => {
+		finishCountdown.value -= 1
+		if (finishCountdown.value <= 0) {
+			window.clearInterval(countdownTimer)
+			countdownTimer = 0
+			void finishRecording()
+		}
+	}, 1000)
+}
+
+function cancelFinishCountdown(): void {
+	window.clearInterval(countdownTimer)
+	countdownTimer = 0
+	finishCountdown.value = 0
+	keepTalking.value = true
+}
 const showLive = ref(false)
 const liveLines = ref<Array<{ t: number; text: string }>>([])
 const liveChecked = ref(false)
@@ -40,6 +70,19 @@ function watchForNextRound(): void {
 			nextRound.value =
 				status.rounds.find((r) => r.status === 'ACTIVE' && !r.recorded_state && r.id !== props.round.id) ??
 				null
+			// orchestrated: the armed table auto-starts the next round after a
+			// short visible countdown (consent was given when arming)
+			if (orchestrated && nextRound.value && !nextStartTimer) {
+				nextStartCountdown.value = 3
+				nextStartTimer = window.setInterval(() => {
+					nextStartCountdown.value -= 1
+					if (nextStartCountdown.value <= 0 && nextRound.value) {
+						window.clearInterval(nextStartTimer)
+						nextStartTimer = 0
+						emit('nextRound', nextRound.value)
+					}
+				}, 1000)
+			}
 		} catch {
 			/* offline — retried on next tick */
 		}
@@ -110,7 +153,10 @@ onMounted(async () => {
 		try {
 			const status = await recorderApi.status(props.session.session_token)
 			const current = status.rounds.find((r) => r.id === props.round.id)
-			if (current && current.status === 'ENDED') roundEnded.value = true
+			if (current && current.status === 'ENDED') {
+				roundEnded.value = true
+				if (orchestrated) beginFinishCountdown()
+			}
 		} catch {
 			/* offline — round state resumes with the network */
 		}
@@ -133,6 +179,8 @@ onBeforeUnmount(() => {
 	window.clearInterval(roundPollTimer)
 	window.clearInterval(livePollTimer)
 	window.clearInterval(nextRoundTimer)
+	window.clearInterval(countdownTimer)
+	window.clearInterval(nextStartTimer)
 	audioContext?.close()
 	wakeLock?.release().catch(() => undefined)
 	document.removeEventListener('visibilitychange', reacquireWakeLock)
@@ -244,10 +292,18 @@ async function clearSynced(): Promise<void> {
 			</div>
 
 			<div v-if="roundEnded && state.phase === 'recording'" class="rc-note">
-				<strong>The round has ended.</strong> Finish recording?
-				<button class="rc-btn rc-primary" style="margin-top: 10px" @click="finishRecording">
-					Finish and synchronize
-				</button>
+				<template v-if="orchestrated && finishCountdown > 0">
+					<strong>The round has ended — finishing in {{ finishCountdown }} s.</strong>
+					<button class="rc-btn" style="margin-top: 10px" @click="cancelFinishCountdown">
+						Keep talking
+					</button>
+				</template>
+				<template v-else>
+					<strong>The round has ended.</strong> Finish recording?
+					<button class="rc-btn rc-primary" style="margin-top: 10px" @click="finishRecording">
+						Finish and synchronize
+					</button>
+				</template>
 			</div>
 
 			<template v-if="state.phase === 'recording'">
@@ -308,7 +364,11 @@ async function clearSynced(): Promise<void> {
 					<p v-if="clearedNote" class="rc-muted">{{ clearedNote }}</p>
 
 					<div v-if="nextRound" class="rc-note" style="text-align: left; margin-top: 20px">
-						<strong>Round {{ nextRound.position }} has started.</strong><br />
+						<strong>Round {{ nextRound.position }} has started.</strong>
+						<template v-if="orchestrated && nextStartCountdown > 0">
+							Recording begins in {{ nextStartCountdown }} s…
+						</template>
+						<br />
 						{{ nextRound.question || nextRound.title }}
 					</div>
 					<p v-else class="rc-muted rc-center" style="margin-top: 20px; font-size: 13.5px">
@@ -318,7 +378,11 @@ async function clearSynced(): Promise<void> {
 			</div>
 
 			<div class="rc-actions">
-				<button v-if="nextRound" class="rc-btn rc-record" style="margin-top: 0" @click="emit('nextRound', nextRound)">
+				<button
+					v-if="nextRound && !orchestrated"
+					class="rc-btn rc-record"
+					style="margin-top: 0"
+					@click="emit('nextRound', nextRound)">
 					Start recording — Round {{ nextRound.position }}
 				</button>
 				<button v-if="!clearedNote" class="rc-btn rc-subtle" @click="clearSynced">

@@ -7,7 +7,8 @@ from citizens.db.models import Assembly, Finding, Participant, Recording, Transc
 
 METHODOLOGY_NOTE = (
     "AI was used to assist transcription and analysis. "
-    "Findings were reviewed by a human organizer. "
+    "Findings were reviewed by a human organizer; discussion summaries are "
+    "AI-generated neutral descriptions. "
     "“Mentioned at N tables” describes how many discussion tables raised a topic; "
     "it is not a measure of participant support."
 )
@@ -54,10 +55,13 @@ def build_report(session: Session, assembly: Assembly, include_drafts: bool = Fa
     } if segment_ids else {}
 
     recordings_by_round: dict[str, int] = {}
+    table_summaries: dict[tuple[str, int], str] = {}
     for recording in session.execute(
         select(Recording).where(Recording.assembly_id == assembly.id)
     ).scalars():
         recordings_by_round[recording.round_id] = recordings_by_round.get(recording.round_id, 0) + 1
+        if recording.analysis_summary:
+            table_summaries[(recording.round_id, recording.table_number)] = recording.analysis_summary
 
     def finding_payload(finding: Finding, table_numbers: dict[str, int]) -> dict:
         return {
@@ -94,17 +98,27 @@ def build_report(session: Session, assembly: Assembly, include_drafts: bool = Fa
             number = table_numbers.get(finding.table_id or "")
             if number is not None:
                 per_table.setdefault(number, []).append(finding_payload(finding, table_numbers))
+        # tables with an AI summary appear even without findings
+        round_table_numbers = sorted(
+            set(per_table)
+            | {num for (rid, num) in table_summaries if rid == round_.id}
+        )
         rounds_payload.append(
             {
                 "position": round_.position,
                 "title": round_.title,
                 "question": round_.question,
                 "status": round_.status,
+                "summary": round_.analysis_summary,
                 "recordings": recordings_by_round.get(round_.id, 0),
                 "cross_table": cross,
                 "tables": [
-                    {"table_number": number, "findings": items}
-                    for number, items in sorted(per_table.items())
+                    {
+                        "table_number": number,
+                        "summary": table_summaries.get((round_.id, number), ""),
+                        "findings": per_table.get(number, []),
+                    }
+                    for number in round_table_numbers
                 ],
             }
         )
@@ -150,17 +164,25 @@ def render_markdown(report: dict) -> str:
         lines += [f"## Round {round_['position']} — {round_['title'] or 'Untitled'}", ""]
         if round_["question"]:
             lines += [f"> {round_['question']}", ""]
+        if round_["summary"]:
+            lines += [f"*AI summary:* {round_['summary']}", ""]
         if round_["cross_table"]:
             lines += ["### Across all tables", ""]
             for finding in round_["cross_table"]:
                 lines += _markdown_finding(finding, cross=True)
         for table in round_["tables"]:
-            if not table["findings"]:
+            if not table["findings"] and not table["summary"]:
                 continue
             lines += [f"### Table {table['table_number']}", ""]
+            if table["summary"]:
+                lines += [f"*AI summary:* {table['summary']}", ""]
             for finding in table["findings"]:
                 lines += _markdown_finding(finding, cross=False)
-        if not round_["cross_table"] and not any(t["findings"] for t in round_["tables"]):
+        if (
+            not round_["summary"]
+            and not round_["cross_table"]
+            and not any(t["findings"] or t["summary"] for t in round_["tables"])
+        ):
             lines += ["_No findings for this round yet._", ""]
     lines += ["---", "", f"_{report['methodology_note']}_", ""]
     return "\n".join(lines)

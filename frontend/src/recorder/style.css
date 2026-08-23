@@ -132,7 +132,7 @@ body {
 	width: 10px;
 	height: 10px;
 	border-radius: 50%;
-	background: var(--rc-red);
+	background: currentColor;
 	animation: rc-pulse 1.5s ease infinite;
 }
 

@@ -51,7 +51,9 @@ function downloadJson(): void {
 
 const hasContent = () =>
 	!!report.value &&
-	report.value.rounds.some((r) => r.cross_table.length > 0 || r.tables.some((t) => t.findings.length > 0))
+	report.value.rounds.some(
+		(r) => r.cross_table.length > 0 || !!r.summary || r.tables.some((t) => t.findings.length > 0 || !!t.summary),
+	)
 </script>
 
 <template>
@@ -95,11 +97,15 @@ const hasContent = () =>
 
 			<template v-for="round in report.rounds" :key="round.position">
 				<div
-					v-if="round.cross_table.length || round.tables.some((t) => t.findings.length)"
+					v-if="round.cross_table.length || round.summary || round.tables.some((t) => t.findings.length || t.summary)"
 					class="cz-card">
 					<h3>Round {{ round.position }} — {{ round.title || 'Untitled' }}</h3>
 					<p v-if="round.question" class="cz-muted" style="font-style: italic; margin: 4px 0 14px">
 						“{{ round.question }}”
+					</p>
+					<p v-if="round.summary" style="font-size: 14.5px; font-style: italic; margin-bottom: 14px">
+						<span class="cz-muted" style="font-style: normal; font-size: 12px; display: block">AI SUMMARY</span>
+						{{ round.summary }}
 					</p>
 
 					<template v-if="round.cross_table.length">
@@ -125,10 +131,14 @@ const hasContent = () =>
 					</template>
 
 					<template v-for="table in round.tables" :key="table.table_number">
-						<template v-if="table.findings.length">
+						<template v-if="table.findings.length || table.summary">
 							<h4 style="font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--cz-text-muted); margin: 16px 0 8px">
 								Table {{ table.table_number }}
 							</h4>
+							<p v-if="table.summary" style="font-size: 14px; font-style: italic; margin: 0 0 10px">
+								<span class="cz-muted" style="font-style: normal; font-size: 12px; display: block">AI SUMMARY</span>
+								{{ table.summary }}
+							</p>
 							<div v-for="finding in table.findings" :key="finding.id" style="margin-bottom: 14px">
 								<strong>
 									{{ TYPE_LABELS[finding.type] ?? finding.type }}: {{ finding.title }}

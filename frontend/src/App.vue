@@ -8,7 +8,7 @@ import SettingsView from './components/SettingsView.vue'
 import CzButton from './components/ui/CzButton.vue'
 import CzToasts from './components/ui/CzToasts.vue'
 import SvgIcon from './components/ui/SvgIcon.vue'
-import type { Assembly } from './types'
+import type { Assembly, InviteGenerated } from './types'
 
 type View = { name: 'empty' } | { name: 'create' } | { name: 'detail'; id: string } | { name: 'settings' }
 
@@ -17,6 +17,8 @@ const loaded = ref(false)
 const view = ref<View>({ name: 'empty' })
 const isAdmin = ref(false)
 const sidebarOpen = ref(false)
+// QR codes generated at creation: handed to the detail view exactly once
+const freshInvites = ref<InviteGenerated[]>([])
 
 const STATUS_TONE: Record<string, string> = {
 	DRAFT: 'gray', READY: 'blue', ACTIVE: 'red', PROCESSING: 'amber', REVIEW: 'blue', COMPLETE: 'green',
@@ -60,7 +62,8 @@ function openSettings(): void {
 	sidebarOpen.value = false
 }
 
-async function onCreated(id: string): Promise<void> {
+async function onCreated(id: string, invites: InviteGenerated[]): Promise<void> {
+	freshInvites.value = invites
 	await loadAssemblies()
 	view.value = { name: 'detail', id }
 }
@@ -140,7 +143,9 @@ async function onDeleted(): Promise<void> {
 			v-else-if="view.name === 'detail'"
 			:key="view.id"
 			:assembly-id="view.id"
+			:fresh-invites="freshInvites"
 			@changed="loadAssemblies()"
+			@invites-consumed="freshInvites = []"
 			@deleted="onDeleted" />
 	</main>
 

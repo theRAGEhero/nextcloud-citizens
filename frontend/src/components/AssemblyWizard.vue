@@ -2,10 +2,10 @@
 import { mdiChevronDown, mdiChevronUp, mdiDeleteOutline, mdiPlus } from '@mdi/js'
 import { ref } from 'vue'
 import { api } from '../api'
-import type { RoundIn } from '../types'
+import type { InviteGenerated, RoundIn } from '../types'
 import CzButton from './ui/CzButton.vue'
 
-const emit = defineEmits<{ cancel: []; created: [id: string] }>()
+const emit = defineEmits<{ cancel: []; created: [id: string, invites: InviteGenerated[]] }>()
 
 const step = ref(1)
 const error = ref('')
@@ -14,6 +14,7 @@ const saving = ref(false)
 const name = ref('')
 const description = ref('')
 const language = ref('en')
+const recordingMode = ref<'orchestrated' | 'independent'>('orchestrated')
 const expectedParticipants = ref(50)
 const tableCount = ref(10)
 const rounds = ref<RoundIn[]>([{ title: 'Round 1', question: '', duration_minutes: 30 }])
@@ -45,11 +46,12 @@ async function submit(): Promise<void> {
 			name: name.value.trim(),
 			description: description.value,
 			language: language.value,
+			recording_mode: recordingMode.value,
 			expected_participants: expectedParticipants.value,
 			default_table_count: tableCount.value,
 			rounds: rounds.value,
 		})
-		emit('created', created.id)
+		emit('created', created.id, created.invites)
 	} catch (err) {
 		error.value = err instanceof Error ? err.message : String(err)
 	} finally {
@@ -87,6 +89,29 @@ async function submit(): Promise<void> {
 			<div class="cz-field">
 				<label>Description (optional)</label>
 				<textarea v-model="description" rows="2"></textarea>
+			</div>
+			<div class="cz-field">
+				<label>Recording mode</label>
+				<div class="cz-row">
+					<label class="cz-radiocard" :class="{ 'cz-radiocard--checked': recordingMode === 'orchestrated' }" style="flex: 1; min-width: 240px; align-items: flex-start; flex-direction: column; gap: 4px">
+						<span style="display: flex; align-items: center; gap: 8px">
+							<input v-model="recordingMode" type="radio" value="orchestrated" />
+							Live event (orchestrated)
+						</span>
+						<span class="cz-muted" style="font-weight: 400; font-size: 12.5px">
+							You start and end each round for all tables at once; phones record simultaneously.
+						</span>
+					</label>
+					<label class="cz-radiocard" :class="{ 'cz-radiocard--checked': recordingMode === 'independent' }" style="flex: 1; min-width: 240px; align-items: flex-start; flex-direction: column; gap: 4px">
+						<span style="display: flex; align-items: center; gap: 8px">
+							<input v-model="recordingMode" type="radio" value="independent" />
+							Independent tables
+						</span>
+						<span class="cz-muted" style="font-weight: 400; font-size: 12.5px">
+							Each table records the shared questions on its own schedule — even days apart.
+						</span>
+					</label>
+				</div>
 			</div>
 			<div class="cz-fieldgrid">
 				<div class="cz-field">

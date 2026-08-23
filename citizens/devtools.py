@@ -29,7 +29,8 @@ def seed_recorder_test() -> dict:
             expected_participants=10,
             default_table_count=2,
         )
-        round_ = Round(position=1, title="TEST Round", question="Browser test?", duration_minutes=30)
+        round_ = Round(position=1, title="TEST Round", question="Browser test?",
+                       duration_minutes=30, status="ACTIVE")
         round_.tables = [Table(number=1), Table(number=2)]
         assembly.rounds.append(round_)
         token = generate_token()

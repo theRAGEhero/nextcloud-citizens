@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { mdiAlertCircleOutline, mdiQrcodeScan, mdiRecordCircleOutline } from '@mdi/js'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import SvgIcon from '../components/ui/SvgIcon.vue'
 import { recorderApi, type JoinResult, type RoundInfo } from './api'
+import ArmedScreen from './components/ArmedScreen.vue'
 import Preflight from './components/Preflight.vue'
 import RecordingScreen from './components/RecordingScreen.vue'
 import RecoverySync from './components/RecoverySync.vue'
@@ -11,13 +12,26 @@ import { initLogger } from './logger'
 
 const SESSION_KEY = 'citizens-recorder-session'
 
-type Screen = 'joining' | 'no-invite' | 'recovery' | 'preflight' | 'ready' | 'recording' | 'error'
+type Screen = 'joining' | 'no-invite' | 'recovery' | 'preflight' | 'armed' | 'ready' | 'recording' | 'error'
 
 const screen = ref<Screen>('joining')
 const error = ref('')
 const session = ref<JoinResult | null>(null)
 const selectedRound = ref<RoundInfo | null>(null)
 const recoveryRecording = ref<StoredRecording | null>(null)
+
+const orchestrated = computed(() => session.value?.assembly.recording_mode === 'orchestrated')
+
+// after preflight: orchestrated tables ARM (facilitator starts recording);
+// independent tables pick a round and start themselves
+function afterPreflight(): void {
+	screen.value = orchestrated.value ? 'armed' : 'ready'
+}
+
+function startRound(round: RoundInfo): void {
+	selectedRound.value = round
+	screen.value = 'recording'
+}
 
 async function enterWithSession(joined: JoinResult): Promise<void> {
 	session.value = joined
@@ -147,7 +161,13 @@ function sessionStorageClear(): void {
 		<Preflight
 			v-else-if="screen === 'preflight' && session"
 			:session="session"
-			@ready="screen = 'ready'" />
+			@ready="afterPreflight" />
+
+		<ArmedScreen
+			v-else-if="screen === 'armed' && session"
+			:session="session"
+			@start="startRound"
+			@back="screen = 'preflight'" />
 
 		<template v-else-if="screen === 'ready' && session">
 			<div class="rc-scroll">
@@ -213,7 +233,7 @@ function sessionStorageClear(): void {
 			:key="selectedRound.id"
 			:session="session"
 			:round="selectedRound"
-			@exit="screen = 'ready'"
-			@next-round="(round: RoundInfo) => { selectedRound = round; }" />
+			@exit="screen = orchestrated ? 'armed' : 'ready'"
+			@next-round="startRound" />
 	</div>
 </template>

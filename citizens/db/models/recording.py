@@ -72,6 +72,8 @@ class Recording(Base):
     duration_seconds: Mapped[float | None] = mapped_column()
     sha256: Mapped[str] = mapped_column(String(64), default="")
     error_code: Mapped[str] = mapped_column(String(64), default="")
+    # neutral AI description of the table discussion (always produced by analysis)
+    analysis_summary: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow, onupdate=utcnow)
 

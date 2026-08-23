@@ -19,6 +19,7 @@ export interface Assembly {
 	language: string
 	scheduled_at: string | null
 	status: string
+	recording_mode: 'orchestrated' | 'independent'
 	expected_participants: number
 	default_table_count: number
 	created_by: string
@@ -59,8 +60,13 @@ export interface InviteGenerated {
 	qr_svg: string
 }
 
+export interface AssemblyCreated extends AssemblyDetail {
+	invites: InviteGenerated[]
+}
+
 export interface DeviceStatus {
 	recording_active?: boolean
+	armed?: boolean
 	local_chunks?: number
 	acked_chunks?: number
 	storage_ok?: boolean
@@ -71,6 +77,7 @@ export interface MonitorTable {
 	table_id: string
 	number: number
 	device: { connected: boolean; seconds_since_contact: number | null; status: DeviceStatus }
+	armed: boolean
 	local_recording_safe: boolean
 	recording: {
 		id: string
@@ -89,10 +96,12 @@ export interface ProvidersSummary {
 		batch_enabled: boolean
 		mistral_configured: boolean
 		mistral_key_hint: string
-		mistral_model: string
+		mistral_live_model: string
+		mistral_batch_model: string
 		deepgram_configured: boolean
 		deepgram_key_hint: string
-		deepgram_model: string
+		deepgram_live_model: string
+		deepgram_batch_model: string
 	}
 	analysis: {
 		base_url: string
@@ -146,12 +155,15 @@ export interface FindingData {
 export interface RoundFindings {
 	round_id: string
 	round_status: string
+	round_summary: string
 	analysis_configured: boolean
 	tables_with_findings: number
 	cross_table: FindingData[]
 	tables: Array<{
 		table_number: number
 		recording: { id: string; state: string } | null
+		summary: string
+		analyzed: boolean
 		findings: FindingData[]
 	}>
 }
@@ -174,9 +186,10 @@ export interface ReportData {
 		title: string
 		question: string
 		status: string
+		summary: string
 		recordings: number
 		cross_table: ReportFinding[]
-		tables: Array<{ table_number: number; findings: ReportFinding[] }>
+		tables: Array<{ table_number: number; summary: string; findings: ReportFinding[] }>
 	}>
 }
 
@@ -198,5 +211,8 @@ export interface RoundMonitor {
 	status: string
 	started_at: string | null
 	duration_minutes: number
+	recording_mode: 'orchestrated' | 'independent'
+	tables_ready: number
+	tables_total: number
 	tables: MonitorTable[]
 }

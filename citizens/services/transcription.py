@@ -48,7 +48,7 @@ def transcribe_recording(
             raise TranscriptionError("No Deepgram API key configured", permanent=True)
         normalized = deepgram_provider.transcribe_file(
             key, audio_path, recording.mime_type, language,
-            model=provider_config.get_setting(store, "deepgram_model"),
+            model=provider_config.get_setting(store, "deepgram_batch_model"),
         )
     elif provider == "mistral":
         key = store.get_value("mistral_api_key")
@@ -56,7 +56,7 @@ def transcribe_recording(
             raise TranscriptionError("No Mistral API key configured", permanent=True)
         normalized = mistral_provider.transcribe_file(
             key, audio_path, recording.mime_type, language,
-            model=provider_config.get_setting(store, "mistral_stt_model"),
+            model=provider_config.get_setting(store, "mistral_batch_model"),
         )
     else:
         raise TranscriptionError(f"Unknown STT provider {provider}", permanent=True)
