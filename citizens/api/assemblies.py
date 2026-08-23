@@ -1,0 +1,143 @@
+"""Organizer API: assemblies, rounds, participants, table assignments."""
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from citizens.db.models import Assembly, Participant
+from citizens.db.session import get_db
+from citizens.domain import schemas
+from citizens.security.identity import CurrentUser
+from citizens.services import assemblies as svc
+from citizens.services.audit import record_audit_event
+
+router = APIRouter()
+
+DB = Annotated[Session, Depends(get_db)]
+
+
+@router.get("/assemblies", response_model=list[schemas.AssemblyOut])
+def list_assemblies(user: CurrentUser, session: DB):
+    return list(
+        session.execute(
+            select(Assembly).where(Assembly.created_by == user).order_by(Assembly.created_at.desc())
+        ).scalars()
+    )
+
+
+@router.post("/assemblies", response_model=schemas.AssemblyDetail, status_code=201)
+def create_assembly(data: schemas.AssemblyCreate, user: CurrentUser, session: DB):
+    assembly = svc.create_assembly(session, user, data)
+    record_audit_event(session, "assembly_created", "assembly", assembly.id, actor=user)
+    return _detail(session, assembly)
+
+
+@router.get("/assemblies/{assembly_id}", response_model=schemas.AssemblyDetail)
+def get_assembly(assembly_id: str, user: CurrentUser, session: DB):
+    return _detail(session, svc.get_owned_assembly(session, assembly_id, user))
+
+
+@router.patch("/assemblies/{assembly_id}", response_model=schemas.AssemblyDetail)
+def update_assembly(assembly_id: str, data: schemas.AssemblyUpdate, user: CurrentUser, session: DB):
+    assembly = svc.get_owned_assembly(session, assembly_id, user)
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(assembly, field, value)
+    session.flush()
+    return _detail(session, assembly)
+
+
+@router.delete("/assemblies/{assembly_id}", status_code=204)
+def delete_assembly(assembly_id: str, user: CurrentUser, session: DB):
+    assembly = svc.get_owned_assembly(session, assembly_id, user)
+    record_audit_event(session, "assembly_deleted", "assembly", assembly.id, actor=user,
+                       data={"name": assembly.name})
+    session.delete(assembly)
+
+
+@router.post("/assemblies/{assembly_id}/rounds", response_model=schemas.RoundOut, status_code=201)
+def add_round(assembly_id: str, data: schemas.RoundIn, user: CurrentUser, session: DB):
+    assembly = svc.get_owned_assembly(session, assembly_id, user)
+    return svc.add_round(session, assembly, data)
+
+
+@router.patch("/rounds/{round_id}", response_model=schemas.RoundOut)
+def update_round(round_id: str, data: schemas.RoundUpdate, user: CurrentUser, session: DB):
+    round_ = svc.get_owned_round(session, round_id, user)
+    return svc.update_round(session, round_, data)
+
+
+@router.delete("/rounds/{round_id}", status_code=204)
+def delete_round(round_id: str, user: CurrentUser, session: DB):
+    round_ = svc.get_owned_round(session, round_id, user)
+    svc.delete_round(session, round_)
+
+
+@router.get("/assemblies/{assembly_id}/participants", response_model=list[schemas.ParticipantOut])
+def list_participants(assembly_id: str, user: CurrentUser, session: DB):
+    assembly = svc.get_owned_assembly(session, assembly_id, user)
+    return assembly.participants
+
+
+@router.post(
+    "/assemblies/{assembly_id}/participants",
+    response_model=list[schemas.ParticipantOut],
+    status_code=201,
+)
+def add_participants(assembly_id: str, data: schemas.ParticipantsBulkIn, user: CurrentUser, session: DB):
+    assembly = svc.get_owned_assembly(session, assembly_id, user)
+    return svc.add_participants(session, assembly, data.participants)
+
+
+@router.post(
+    "/assemblies/{assembly_id}/participants/import-csv",
+    response_model=list[schemas.ParticipantOut],
+    status_code=201,
+)
+def import_participants_csv(assembly_id: str, data: schemas.CsvImportIn, user: CurrentUser, session: DB):
+    assembly = svc.get_owned_assembly(session, assembly_id, user)
+    return svc.add_participants(session, assembly, svc.parse_participants_csv(data.csv))
+
+
+@router.delete("/participants/{participant_id}", status_code=204)
+def delete_participant(participant_id: str, user: CurrentUser, session: DB):
+    participant = session.get(Participant, participant_id)
+    if participant is not None and participant.assembly.created_by == user:
+        session.delete(participant)
+
+
+@router.get("/rounds/{round_id}/tables", response_model=list[schemas.TableOut])
+def round_tables(round_id: str, user: CurrentUser, session: DB):
+    round_ = svc.get_owned_round(session, round_id, user)
+    return svc.tables_with_participants(session, round_)
+
+
+@router.post("/rounds/{round_id}/assignments/randomize", response_model=list[schemas.TableOut])
+def randomize(round_id: str, user: CurrentUser, session: DB):
+    round_ = svc.get_owned_round(session, round_id, user)
+    svc.randomize_assignments(session, round_)
+    return svc.tables_with_participants(session, round_)
+
+
+@router.post("/rounds/{round_id}/assignments/copy-previous", response_model=list[schemas.TableOut])
+def copy_previous(round_id: str, user: CurrentUser, session: DB):
+    round_ = svc.get_owned_round(session, round_id, user)
+    svc.copy_previous_assignments(session, round_)
+    return svc.tables_with_participants(session, round_)
+
+
+@router.post("/rounds/{round_id}/assignments/move", response_model=list[schemas.TableOut])
+def move(round_id: str, data: schemas.AssignmentMove, user: CurrentUser, session: DB):
+    round_ = svc.get_owned_round(session, round_id, user)
+    svc.move_assignment(session, round_, data.participant_id, data.to_table_id)
+    return svc.tables_with_participants(session, round_)
+
+
+def _detail(session: Session, assembly: Assembly) -> schemas.AssemblyDetail:
+    count = session.execute(
+        select(func.count()).select_from(Participant).where(Participant.assembly_id == assembly.id)
+    ).scalar_one()
+    detail = schemas.AssemblyDetail.model_validate(assembly, from_attributes=True)
+    detail.participant_count = count
+    return detail

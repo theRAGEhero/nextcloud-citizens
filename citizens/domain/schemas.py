@@ -1,0 +1,121 @@
+"""API request/response schemas."""
+
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class RoundIn(BaseModel):
+    title: str = ""
+    question: str = ""
+    duration_minutes: int = Field(default=30, ge=1, le=600)
+
+
+class RoundUpdate(BaseModel):
+    title: str | None = None
+    question: str | None = None
+    duration_minutes: int | None = Field(default=None, ge=1, le=600)
+    position: int | None = Field(default=None, ge=1)
+
+
+class RoundOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    position: int
+    title: str
+    question: str
+    duration_minutes: int
+    status: str
+    started_at: datetime | None
+    ended_at: datetime | None
+
+
+class AssemblyCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    language: str = "en"
+    scheduled_at: datetime | None = None
+    expected_participants: int = Field(default=0, ge=0, le=10000)
+    default_table_count: int = Field(default=0, ge=0, le=200)
+    rounds: list[RoundIn] = []
+
+
+class AssemblyUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = None
+    language: str | None = None
+    scheduled_at: datetime | None = None
+    expected_participants: int | None = Field(default=None, ge=0, le=10000)
+    default_table_count: int | None = Field(default=None, ge=0, le=200)
+
+
+class AssemblyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    description: str
+    language: str
+    scheduled_at: datetime | None
+    status: str
+    expected_participants: int
+    default_table_count: int
+    created_by: str
+    created_at: datetime
+
+
+class AssemblyDetail(AssemblyOut):
+    rounds: list[RoundOut]
+    participant_count: int = 0
+
+
+class ParticipantIn(BaseModel):
+    label: str = Field(min_length=1, max_length=50)
+    name: str = ""
+    email: str = ""
+    notes: str = ""
+
+
+class ParticipantsBulkIn(BaseModel):
+    participants: list[ParticipantIn]
+
+
+class CsvImportIn(BaseModel):
+    csv: str
+
+
+class ParticipantOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    label: str
+    name: str
+    email: str
+    notes: str
+
+
+class TableOut(BaseModel):
+    id: str
+    number: int
+    label: str
+    status: str
+    participants: list[ParticipantOut]
+
+
+class AssignmentMove(BaseModel):
+    participant_id: str
+    to_table_id: str
+
+
+class InviteOut(BaseModel):
+    id: str
+    table_number: int
+    active: bool
+    created_at: datetime
+
+
+class InviteGenerated(BaseModel):
+    table_number: int
+    url: str
+    qr_svg: str

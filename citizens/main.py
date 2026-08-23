@@ -9,12 +9,14 @@ from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import AppAPIAuthMiddleware, run_app, set_handlers
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
+from citizens.api.assemblies import router as assemblies_router
+from citizens.api.recorders import router as recorders_router
 from citizens.api.system import router as system_router
 from citizens.config import get_settings
 from citizens.db.migrate import run_migrations
 from citizens.db.session import configure_database, sqlite_url
 from citizens.logging_setup import get_logger, setup_logging
-from citizens.services.audit import record_audit_event
+from citizens.services.audit import record_audit_event_standalone
 from citizens.storage.paths import db_path, ensure_storage_layout
 
 log = get_logger(__name__)
@@ -25,10 +27,12 @@ async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
         if enabled:
             await nc.ui.top_menu.register("citizens", "Citizens", "img/app.svg")
             await nc.ui.resources.set_script("top_menu", "citizens", "js/citizens-main")
-            record_audit_event("app_enabled")
+            # NC appends .js/.css to registered resource paths — pass them without extension
+            await nc.ui.resources.set_style("top_menu", "citizens", "css/citizens-main")
+            record_audit_event_standalone("app_enabled")
             log.info("app_enabled")
         else:
-            record_audit_event("app_disabled")
+            record_audit_event_standalone("app_disabled")
             log.info("app_disabled")
     except Exception as exc:
         log.error("enabled_handler_failed", enabled=enabled, exc_info=True)
@@ -72,6 +76,8 @@ def create_app(with_auth: bool = True) -> FastAPI:
         return response
 
     app.include_router(system_router, prefix="/api/v1")
+    app.include_router(assemblies_router, prefix="/api/v1")
+    app.include_router(recorders_router, prefix="/api/v1")
     return app
 
 

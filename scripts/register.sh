@@ -22,8 +22,8 @@ JSON_INFO=$(cat <<EOF
 {"url":"^js\\\\/.*","verb":"GET","access_level":1,"headers_to_exclude":[]},
 {"url":"^css\\\\/.*","verb":"GET","access_level":1,"headers_to_exclude":[]},
 {"url":"^img\\\\/.*","verb":"GET","access_level":1,"headers_to_exclude":[]},
-{"url":"^api\\\\/v1\\\\/health$","verb":"GET","access_level":1,"headers_to_exclude":[]},
-{"url":"^api\\\\/v1\\\\/admin\\\\/.*","verb":"GET,POST,PUT,DELETE","access_level":2,"headers_to_exclude":[]}
+{"url":"^api\\\\/v1\\\\/admin\\\\/.*","verb":"GET,POST,PUT,DELETE","access_level":2,"headers_to_exclude":[]},
+{"url":"^api\\\\/v1\\\\/.*","verb":"GET,POST,PUT,PATCH,DELETE","access_level":1,"headers_to_exclude":[]}
 ]}
 EOF
 )
