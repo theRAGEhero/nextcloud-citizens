@@ -14,8 +14,8 @@ evidence-linked AI analysis that a human organizer reviews and approves.]]>
 	<author mail="philip@decentsoftwa.re">Philip</author>
 	<namespace>Citizens</namespace>
 	<category>tools</category>
-	<website>https://github.com/decentsoftware/nextcloud-citizens</website>
-	<bugs>https://github.com/decentsoftware/nextcloud-citizens/issues</bugs>
+	<website>https://github.com/theRAGEhero/nextcloud-citizens</website>
+	<bugs>https://github.com/theRAGEhero/nextcloud-citizens/issues</bugs>
 	<dependencies>
 		<nextcloud min-version="32" max-version="35"/>
 	</dependencies>
