@@ -9,16 +9,18 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from citizens.config import get_settings
-from citizens.db.models import Assembly, RecorderSession
+from citizens.db.models import Assembly, RecorderSession, Recording
 from citizens.db.models.base import utcnow
 from citizens.db.session import get_db
 from citizens.security.rate_limit import JOIN_LIMITER, client_ip
 from citizens.services import recording as rec_svc
 from citizens.services.live_captions import LIVE_CAPTIONS
 from citizens.services.provider_config import live_stt_snapshot
+from citizens.services.recording import RERECORDABLE_STATES
 from citizens.storage.paths import device_log_path
 
 router = APIRouter(prefix="/public")
@@ -174,6 +176,17 @@ def _assembly_state(session: Session, recorder_session: RecorderSession) -> dict
     assembly = session.get(Assembly, recorder_session.assembly_id)
     if assembly is None:
         raise HTTPException(status_code=404, detail="Assembly not found")
+    # this table's recording state per round, so the phone can lock finished
+    # rounds and offer only un-recorded ones
+    recorded_rounds: dict[str, str] = {}
+    for recording in session.execute(
+        select(Recording).where(
+            Recording.assembly_id == assembly.id,
+            Recording.table_number == recorder_session.table_number,
+            Recording.state.notin_(RERECORDABLE_STATES),
+        )
+    ).scalars():
+        recorded_rounds[recording.round_id] = recording.state
     return {
         "assembly": {"id": assembly.id, "name": assembly.name, "language": assembly.language},
         "table_number": recorder_session.table_number,
@@ -185,6 +198,7 @@ def _assembly_state(session: Session, recorder_session: RecorderSession) -> dict
                 "question": round_.question,
                 "duration_minutes": round_.duration_minutes,
                 "status": round_.status,
+                "recorded_state": recorded_rounds.get(round_.id),
             }
             for round_ in assembly.rounds
         ],

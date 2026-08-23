@@ -61,6 +61,10 @@ def get_session_by_bearer(session: Session, bearer: str) -> RecorderSession:
     return recorder_session
 
 
+# a recording in one of these states is failed/abandoned: re-recording allowed
+RERECORDABLE_STATES = ("CREATED", "AUDIO_INVALID", "UPLOAD_INCOMPLETE")
+
+
 def start_recording(
     session: Session, recorder_session: RecorderSession, round_id: str, mime_type: str
 ) -> Recording:
@@ -72,6 +76,22 @@ def start_recording(
     ).scalar_one_or_none()
     if table is None:
         raise HTTPException(status_code=422, detail="This round has no table with your number")
+
+    # one healthy recording per table+round: prevents accidental extra
+    # recordings after a table already finished (unless the earlier attempt failed)
+    existing = session.execute(
+        select(Recording).where(
+            Recording.round_id == round_id,
+            Recording.table_id == table.id,
+            Recording.state.notin_(RERECORDABLE_STATES),
+        )
+    ).scalars().first()
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This table already recorded round {round_.position} "
+            f"(recording is {existing.state}). Ask the facilitator if a re-recording is needed.",
+        )
 
     recording = Recording(
         assembly_id=recorder_session.assembly_id,

@@ -99,6 +99,7 @@ export interface ProvidersSummary {
 		model: string
 		configured: boolean
 		key_hint: string
+		enabled: boolean
 	}
 }
 
@@ -117,6 +118,79 @@ export interface TranscriptData {
 	model: string
 	language: string
 	segments: TranscriptSegment[]
+}
+
+export interface FindingEvidence {
+	segment_id: string
+	speaker: string
+	start: number
+	end: number
+	text: string
+}
+
+export interface FindingData {
+	id: string
+	scope: 'table' | 'round'
+	type: string
+	title: string
+	summary: string
+	support: string
+	status: string
+	table_number: number | null
+	mentioned_table_count: number
+	ai_model: string
+	reviewed_by: string | null
+	evidence: FindingEvidence[]
+}
+
+export interface RoundFindings {
+	round_id: string
+	round_status: string
+	analysis_configured: boolean
+	tables_with_findings: number
+	cross_table: FindingData[]
+	tables: Array<{
+		table_number: number
+		recording: { id: string; state: string } | null
+		findings: FindingData[]
+	}>
+}
+
+export interface ReportData {
+	assembly: {
+		name: string
+		description: string
+		language: string
+		status: string
+		participants: number
+		expected_participants: number
+		tables: number
+	}
+	method: string
+	methodology_note: string
+	include_drafts: boolean
+	rounds: Array<{
+		position: number
+		title: string
+		question: string
+		status: string
+		recordings: number
+		cross_table: ReportFinding[]
+		tables: Array<{ table_number: number; findings: ReportFinding[] }>
+	}>
+}
+
+export interface ReportFinding {
+	id: string
+	type: string
+	title: string
+	summary: string
+	support: string
+	status: string
+	is_draft: boolean
+	table_number: number | null
+	mentioned_table_count: number
+	evidence: Array<{ speaker: string; start: number; timestamp: string; text: string }>
 }
 
 export interface RoundMonitor {

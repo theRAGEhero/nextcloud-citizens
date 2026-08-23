@@ -11,7 +11,8 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     # TRANSCRIBED → TRANSCRIBING supports organizer-requested re-transcription
     "TRANSCRIBED": {"ANALYZING", "TRANSCRIBING"},
     "ANALYZING": {"READY_FOR_REVIEW", "ANALYSIS_FAILED"},
-    "READY_FOR_REVIEW": {"REVIEWED"},
+    # READY_FOR_REVIEW → ANALYZING supports organizer-requested re-analysis
+    "READY_FOR_REVIEW": {"REVIEWED", "ANALYZING"},
     "REVIEWED": set(),
     # error states are recoverable by retrying the step that failed
     "UPLOAD_INCOMPLETE": {"WAITING_FOR_CHUNKS", "ASSEMBLING"},

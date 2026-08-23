@@ -5,7 +5,9 @@ import type {
 	InviteGenerated,
 	Participant,
 	ProvidersSummary,
+	ReportData,
 	Round,
+	RoundFindings,
 	RoundIn,
 	RoundMonitor,
 	Table,
@@ -110,6 +112,18 @@ export const api = {
 	startRound: (roundId: string) => request<Round>('POST', `/api/v1/rounds/${roundId}/start`),
 	endRound: (roundId: string) => request<Round>('POST', `/api/v1/rounds/${roundId}/end`),
 	roundMonitor: (roundId: string) => request<RoundMonitor>('GET', `/api/v1/rounds/${roundId}/monitor`),
+	roundFindings: (roundId: string) =>
+		request<RoundFindings>('GET', `/api/v1/rounds/${roundId}/findings`),
+	updateFinding: (findingId: string, payload: { status?: string; title?: string; summary?: string }) =>
+		request<unknown>('PATCH', `/api/v1/findings/${findingId}`, payload),
+	requestAnalysis: (roundId: string, force = false) =>
+		request<{ queued: number }>('POST', `/api/v1/rounds/${roundId}/analyze`, { force }),
+	assemblyReport: (assemblyId: string, includeDrafts: boolean) =>
+		request<ReportData>(
+			'GET',
+			`/api/v1/assemblies/${assemblyId}/report?include_drafts=${includeDrafts}`,
+		),
+
 	getTranscript: (recordingId: string) =>
 		request<TranscriptData>('GET', `/api/v1/recordings/${recordingId}/transcript`),
 	requestTranscription: (recordingId: string) =>

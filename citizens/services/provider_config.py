@@ -59,6 +59,7 @@ DEFAULTS = {
     "mistral_stt_model": "voxtral-mini-latest",
     "analysis_base_url": "https://api.mistral.ai/v1",
     "analysis_model": "mistral-large-latest",
+    "analysis_enabled": "1",
 }
 
 
@@ -140,6 +141,7 @@ def providers_summary(store: ConfigStore) -> dict:
             "model": get_setting(store, "analysis_model"),
             "configured": bool(store.get_value("analysis_api_key")),
             "key_hint": key_hint(store, "analysis_api_key"),
+            "enabled": get_setting(store, "analysis_enabled") == "1",
         },
     }
 

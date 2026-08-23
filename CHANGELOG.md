@@ -4,6 +4,30 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Milestones 6 + 7-lite — 2026-08-24 (AI analysis, reports, recorder lock, GitHub)
+
+- **AI analysis pipeline**: after transcription, each table is analyzed by the
+  configured OpenAI-compatible endpoint (verified live against Ollama Cloud /
+  deepseek-v4-flash): strict-JSON extraction validated by Pydantic with
+  correction retries; findings without real transcript evidence are dropped;
+  once every table of a round is analyzed, cross-table clustering runs
+  automatically ("Mentioned at N tables" — never support percentages).
+  Findings are DRAFTs with mandatory human review (approve / reject / edit →
+  EDITED_AND_APPROVED; original AI output preserved for audit).
+- **Analysis tab** (review UI with evidence expanders, re-run, guided empty
+  states) and **Report tab**: assembly report from approved findings
+  (optional clearly-marked drafts), evidence quotes with timestamps, fixed
+  AI-assistance methodology note, Markdown + JSON downloads.
+- **Recorder lock**: after a table's recording is synchronized the device is
+  locked on a completion screen — no way back to start a stray recording; the
+  server refuses a second healthy recording per table+round (409); the next
+  round appears automatically when the facilitator starts it; failed attempts
+  (invalid/incomplete audio) still allow re-recording.
+- Published to GitHub: https://github.com/theRAGEhero/nextcloud-citizens
+  (public; tracked files and full history verified clean of secrets).
+- 54 backend tests; Playwright offline tests green; full chain verified live
+  end-to-end including a real cross-table finding.
+
 ### UI/UX design round — 2026-08-23
 
 - Organizer rebuilt around Nextcloud's native app-shell: sidebar navigation

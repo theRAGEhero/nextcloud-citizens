@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import {
 	mdiAccountGroup,
+	mdiBrain,
 	mdiDeleteOutline,
+	mdiFileDocumentOutline,
 	mdiMonitorEye,
 	mdiQrcode,
 	mdiTableFurniture,
@@ -11,8 +13,10 @@ import {
 import { onMounted, ref } from 'vue'
 import { api } from '../api'
 import type { AssemblyDetail } from '../types'
+import AnalysisTab from './AnalysisTab.vue'
 import OverviewTab from './OverviewTab.vue'
 import ParticipantsTab from './ParticipantsTab.vue'
+import ReportTab from './ReportTab.vue'
 import QrTab from './QrTab.vue'
 import RoundsTab from './RoundsTab.vue'
 import TablesTab from './TablesTab.vue'
@@ -27,7 +31,7 @@ import { toast } from './ui/toast'
 const props = defineProps<{ assemblyId: string }>()
 const emit = defineEmits<{ changed: []; deleted: [] }>()
 
-type Tab = 'overview' | 'rounds' | 'participants' | 'tables' | 'qr' | 'monitor'
+type Tab = 'overview' | 'rounds' | 'participants' | 'tables' | 'qr' | 'monitor' | 'analysis' | 'report'
 
 const assembly = ref<AssemblyDetail | null>(null)
 const error = ref('')
@@ -41,6 +45,8 @@ const TABS: Array<{ id: Tab; label: string; icon: string }> = [
 	{ id: 'tables', label: 'Tables', icon: mdiTableFurniture },
 	{ id: 'qr', label: 'QR codes', icon: mdiQrcode },
 	{ id: 'monitor', label: 'Live', icon: mdiMonitorEye },
+	{ id: 'analysis', label: 'Analysis', icon: mdiBrain },
+	{ id: 'report', label: 'Report', icon: mdiFileDocumentOutline },
 ]
 
 async function reload(): Promise<void> {
@@ -111,7 +117,9 @@ async function deleteAssembly(): Promise<void> {
 			<ParticipantsTab v-else-if="tab === 'participants'" :assembly-id="assembly.id" @changed="reload" />
 			<TablesTab v-else-if="tab === 'tables'" :assembly="assembly" />
 			<QrTab v-else-if="tab === 'qr'" :assembly="assembly" />
-			<MonitorTab v-else :assembly="assembly" @changed="reload" />
+			<MonitorTab v-else-if="tab === 'monitor'" :assembly="assembly" @changed="reload" />
+			<AnalysisTab v-else-if="tab === 'analysis'" :assembly="assembly" />
+			<ReportTab v-else :assembly="assembly" />
 		</template>
 
 		<CzConfirm

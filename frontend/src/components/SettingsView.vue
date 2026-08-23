@@ -22,6 +22,7 @@ const deepgramModel = ref('')
 const analysisBaseUrl = ref('')
 const analysisModel = ref('')
 const analysisKey = ref('')
+const analysisEnabled = ref(true)
 const testResults = ref<Record<string, { ok: boolean; message: string }>>({})
 
 async function reload(): Promise<void> {
@@ -33,6 +34,7 @@ async function reload(): Promise<void> {
 	deepgramModel.value = summary.value.stt.deepgram_model
 	analysisBaseUrl.value = summary.value.analysis.base_url
 	analysisModel.value = summary.value.analysis.model
+	analysisEnabled.value = summary.value.analysis.enabled
 }
 
 onMounted(async () => {
@@ -55,6 +57,7 @@ async function save(): Promise<void> {
 			deepgram_model: deepgramModel.value.trim(),
 			analysis_base_url: analysisBaseUrl.value.trim(),
 			analysis_model: analysisModel.value.trim(),
+			analysis_enabled: analysisEnabled.value,
 		}
 		if (mistralKey.value) payload.mistral_api_key = mistralKey.value
 		if (deepgramKey.value) payload.deepgram_api_key = deepgramKey.value
@@ -192,6 +195,10 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 				<p class="cz-muted" style="font-size: 13.5px; margin-bottom: 14px">
 					Any OpenAI-compatible endpoint works: Mistral (default), Ollama Cloud, a remote Ollama server, vLLM…
 				</p>
+				<label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 14px">
+					<input v-model="analysisEnabled" type="checkbox" />
+					Run analysis automatically after each table is transcribed
+				</label>
 				<div class="cz-fieldgrid">
 					<div class="cz-field" style="grid-column: span 2">
 						<label>Base URL</label>

@@ -1,0 +1,37 @@
+"""Pydantic schemas that AI analysis output MUST match (brief §37).
+
+Invalid model output is never stored — the provider retries with a correction
+prompt, and anything that still fails validation is rejected.
+"""
+
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+FindingType = Literal[
+    "proposal", "agreement", "disagreement", "concern",
+    "question", "minority_position", "new_idea",
+]
+
+
+class TableFindingItem(BaseModel):
+    type: FindingType
+    title: str = Field(min_length=3, max_length=300)
+    summary: str = Field(min_length=3, max_length=2000)
+    support: Literal["strong", "mixed", "weak", "unclear"] | None = None
+    evidence_segment_ids: list[str] = Field(min_length=1, max_length=20)
+
+
+class TableAnalysis(BaseModel):
+    findings: list[TableFindingItem] = Field(max_length=40)
+
+
+class RoundClusterItem(BaseModel):
+    type: FindingType
+    title: str = Field(min_length=3, max_length=300)
+    summary: str = Field(min_length=3, max_length=2000)
+    source_finding_ids: list[str] = Field(min_length=1, max_length=50)
+
+
+class RoundAnalysis(BaseModel):
+    clusters: list[RoundClusterItem] = Field(max_length=40)

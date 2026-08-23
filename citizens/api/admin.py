@@ -50,6 +50,7 @@ class ProvidersUpdate(BaseModel):
     analysis_base_url: str | None = Field(default=None, max_length=500)
     analysis_model: str | None = Field(default=None, max_length=200)
     analysis_api_key: str | None = Field(default=None, max_length=500)
+    analysis_enabled: bool | None = None
 
 
 @router.put("/providers")

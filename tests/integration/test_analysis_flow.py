@@ -1,0 +1,210 @@
+"""Analysis chain: transcription → table findings → cross-table → review → report.
+Also the recorder duplicate-recording guard (one healthy recording per table+round).
+"""
+
+import hashlib
+import re
+import subprocess
+import time
+
+import pytest
+
+from citizens.domain.analysis_schemas import RoundAnalysis, TableAnalysis
+from citizens.providers.transcription.base import NormalizedSegment, NormalizedTranscript
+
+
+class MemoryStore:
+    def __init__(self, values=None):
+        self.values = values or {}
+
+    def get_value(self, key):
+        return self.values.get(key)
+
+    def set_value(self, key, value, sensitive=False):
+        self.values[key] = value
+
+    def delete_value(self, key):
+        self.values.pop(key, None)
+
+
+FAKE_TRANSCRIPT = NormalizedTranscript(
+    provider="deepgram", model="nova-3", language="en",
+    segments=[
+        NormalizedSegment(speaker="SPEAKER_01", start=0.5, end=4.0,
+                          text="The evening buses should run much later on weekends."),
+        NormalizedSegment(speaker="SPEAKER_02", start=4.5, end=8.0,
+                          text="I disagree, the money should go to bike lanes instead."),
+    ],
+    raw={},
+)
+
+
+@pytest.fixture
+def pipeline(client, tmp_path, monkeypatch):
+    store = MemoryStore({
+        "deepgram_api_key": "dg-test", "stt_provider": "deepgram", "stt_batch_enabled": "1",
+        "analysis_api_key": "an-test", "analysis_enabled": "1",
+    })
+    monkeypatch.setattr("citizens.services.provider_config.default_store", lambda: store)
+    monkeypatch.setattr(
+        "citizens.services.transcription.deepgram_provider.transcribe_file",
+        lambda *a, **k: FAKE_TRANSCRIPT,
+    )
+
+    calls = {"table": 0, "round": 0}
+
+    def fake_chat_json(base_url, key, model, system, user, schema):
+        assert key == "an-test"
+        if schema is TableAnalysis:
+            calls["table"] += 1
+            # cite the first segment id embedded in the prompt: "[id1|id2] SPEAKER..."
+            first_ids = re.search(r"\[([0-9a-f|-]+)\]", user).group(1)
+            return TableAnalysis.model_validate({
+                "findings": [
+                    {"type": "proposal", "title": "Extend evening bus service",
+                     "summary": "Buses should run later, especially weekends.",
+                     "support": "mixed", "evidence_segment_ids": [first_ids.split("|")[0]]},
+                    {"type": "concern", "title": "Invented claim",
+                     "summary": "This one cites a fake segment.",
+                     "evidence_segment_ids": ["not-a-real-segment"]},
+                ]
+            })
+        calls["round"] += 1
+        finding_id = re.search(r"\[([0-9a-f-]{36})\]", user).group(1)
+        return RoundAnalysis.model_validate({
+            "clusters": [{"type": "proposal", "title": "Later buses (recurring)",
+                          "summary": "Raised across tables.", "source_finding_ids": [finding_id]}]
+        })
+
+    monkeypatch.setattr("citizens.services.analysis.chat_json", fake_chat_json)
+
+    assembly = client.post(
+        "/api/v1/assemblies",
+        json={"name": "TEST Analysis", "default_table_count": 1,
+              "rounds": [{"title": "R1", "question": "Transport?", "duration_minutes": 30}]},
+    ).json()
+    invites = client.post(f"/api/v1/assemblies/{assembly['id']}/invites/generate").json()
+    token = re.search(r"#/join/(.+)$", invites[0]["url"]).group(1)
+    joined = client.post("/api/v1/public/join", json={"token": token},
+                         headers={"X-Forwarded-For": "10.4.4.4"}).json()
+    headers = {"Authorization": f"Bearer {joined['session_token']}"}
+
+    audio = tmp_path / "s.webm"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+                    "-c:a", "libopus", str(audio)], check=True, timeout=120)
+    blob = audio.read_bytes()
+    round_id = joined["rounds"][0]["id"]
+    recording_id = client.post(
+        "/api/v1/public/recorder/start",
+        json={"round_id": round_id, "mime_type": "audio/webm"}, headers=headers,
+    ).json()["recording_id"]
+    client.post(
+        f"/api/v1/public/recorder/recordings/{recording_id}/chunks/0", content=blob,
+        headers={**headers, "Content-Type": "application/octet-stream",
+                 "X-Chunk-SHA256": hashlib.sha256(blob).hexdigest()},
+    )
+    client.post(f"/api/v1/public/recorder/recordings/{recording_id}/complete",
+                json={"total_chunks": 1}, headers=headers)
+    return {"client": client, "assembly": assembly, "round_id": round_id,
+            "recording_id": recording_id, "headers": headers, "calls": calls, "blob": blob}
+
+
+def _wait(client, headers, recording_id, targets, timeout=40.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        status = client.get(f"/api/v1/public/recorder/recordings/{recording_id}",
+                            headers=headers).json()
+        if status["state"] in targets:
+            return status
+        time.sleep(0.4)
+    return status
+
+
+def test_full_analysis_chain_and_report(pipeline):
+    client = pipeline["client"]
+    status = _wait(client, pipeline["headers"], pipeline["recording_id"], ("READY_FOR_REVIEW",))
+    assert status["state"] == "READY_FOR_REVIEW", status
+
+    # cross-table clustering follows automatically
+    deadline = time.time() + 30
+    findings = None
+    while time.time() < deadline:
+        findings = client.get(f"/api/v1/rounds/{pipeline['round_id']}/findings").json()
+        if findings["cross_table"]:
+            break
+        time.sleep(0.5)
+    assert findings["cross_table"], findings
+    assert pipeline["calls"] == {"table": 1, "round": 1}
+
+    # the invented-evidence finding was dropped; the real one has evidence text
+    table_findings = findings["tables"][0]["findings"]
+    assert len(table_findings) == 1
+    assert table_findings[0]["title"] == "Extend evening bus service"
+    assert table_findings[0]["status"] == "DRAFT"
+    assert table_findings[0]["evidence"][0]["text"].startswith("The evening buses")
+    cross = findings["cross_table"][0]
+    assert cross["mentioned_table_count"] == 1
+
+    # report excludes drafts by default, includes them on request (marked)
+    report = client.get(f"/api/v1/assemblies/{pipeline['assembly']['id']}/report").json()
+    assert all(not r["cross_table"] and not any(t["findings"] for t in r["tables"])
+               for r in report["rounds"])
+    draft_report = client.get(
+        f"/api/v1/assemblies/{pipeline['assembly']['id']}/report?include_drafts=true"
+    ).json()
+    assert draft_report["rounds"][0]["cross_table"][0]["is_draft"] is True
+
+    # review: approve table finding with an edit → EDITED_AND_APPROVED
+    updated = client.patch(
+        f"/api/v1/findings/{table_findings[0]['id']}",
+        json={"status": "APPROVED", "title": "Extend evening and weekend bus service"},
+    ).json()
+    assert updated["status"] == "EDITED_AND_APPROVED"
+    client.patch(f"/api/v1/findings/{cross['id']}", json={"status": "APPROVED"})
+
+    report = client.get(f"/api/v1/assemblies/{pipeline['assembly']['id']}/report").json()
+    round_report = report["rounds"][0]
+    assert round_report["cross_table"][0]["title"] == "Later buses (recurring)"
+    assert round_report["tables"][0]["findings"][0]["title"] == "Extend evening and weekend bus service"
+    assert "not a measure of participant support" in report["methodology_note"]
+
+    # markdown export
+    markdown = client.get(
+        f"/api/v1/assemblies/{pipeline['assembly']['id']}/report.md"
+    )
+    assert markdown.status_code == 200
+    assert "Extend evening and weekend bus service" in markdown.text
+    assert "Mentioned at 1 table(s)" in markdown.text
+
+
+def test_duplicate_recording_blocked(pipeline):
+    client = pipeline["client"]
+    _wait(client, pipeline["headers"], pipeline["recording_id"], ("READY_FOR_REVIEW",))
+
+    # second recording for the same table+round is refused
+    blocked = client.post(
+        "/api/v1/public/recorder/start",
+        json={"round_id": pipeline["round_id"], "mime_type": "audio/webm"},
+        headers=pipeline["headers"],
+    )
+    assert blocked.status_code == 409
+    assert "already recorded" in blocked.json()["detail"]
+
+    # the public status exposes the recorded state for the phone UI
+    status = client.get("/api/v1/public/recorder/status", headers=pipeline["headers"]).json()
+    assert status["rounds"][0]["recorded_state"] == "READY_FOR_REVIEW"
+
+
+def test_manual_analysis_requires_configuration(client, monkeypatch):
+    store = MemoryStore({})  # no analysis key
+    monkeypatch.setattr("citizens.services.provider_config.default_store", lambda: store)
+    assembly = client.post(
+        "/api/v1/assemblies",
+        json={"name": "TEST NoKey", "default_table_count": 1,
+              "rounds": [{"title": "R1", "question": "Q", "duration_minutes": 10}]},
+    ).json()
+    response = client.post(f"/api/v1/rounds/{assembly['rounds'][0]['id']}/analyze", json={})
+    assert response.status_code == 409
+    assert "not configured" in response.json()["detail"]
+    findings = client.get(f"/api/v1/rounds/{assembly['rounds'][0]['id']}/findings").json()
+    assert findings["analysis_configured"] is False

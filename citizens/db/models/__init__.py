@@ -8,11 +8,14 @@ from citizens.db.models.assembly import (
 )
 from citizens.db.models.audit import AuditEvent
 from citizens.db.models.base import Base
+from citizens.db.models.findings import Finding, FindingEvidence
 from citizens.db.models.jobs import AppJob
 from citizens.db.models.recording import AudioChunk, RecorderSession, Recording
 from citizens.db.models.transcript import Transcript, TranscriptSegment, TranscriptWord
 
 __all__ = [
+    "Finding",
+    "FindingEvidence",
     "Transcript",
     "TranscriptSegment",
     "TranscriptWord",

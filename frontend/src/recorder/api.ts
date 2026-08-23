@@ -13,6 +13,8 @@ export interface RoundInfo {
 	question: string
 	duration_minutes: number
 	status: string
+	/** state of this table's healthy recording for the round, null if none */
+	recorded_state?: string | null
 }
 
 export interface JoinResult {

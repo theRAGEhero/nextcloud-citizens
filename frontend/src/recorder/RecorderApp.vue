@@ -43,7 +43,13 @@ async function enterWithSession(joined: JoinResult): Promise<void> {
 }
 
 function pickRound(rounds: RoundInfo[]): RoundInfo | null {
-	return rounds.find((r) => r.status === 'ACTIVE') ?? rounds.find((r) => r.status === 'NOT_STARTED') ?? rounds[0] ?? null
+	const open = rounds.filter((r) => !r.recorded_state)
+	return (
+		open.find((r) => r.status === 'ACTIVE') ??
+		open.find((r) => r.status === 'NOT_STARTED') ??
+		open[0] ??
+		null
+	)
 }
 
 onMounted(async () => {
@@ -142,8 +148,9 @@ function sessionStorageClear(): void {
 				<p class="rc-eyebrow">{{ session.assembly.name }}</p>
 				<div class="rc-hero__table">TABLE {{ session.table_number }}</div>
 			</div>
-			<div class="rc-card">
-				<template v-if="selectedRound">
+
+			<template v-if="selectedRound">
+				<div class="rc-card">
 					<p class="rc-eyebrow" style="margin-bottom: 4px">
 						Round {{ selectedRound.position }} of {{ session.rounds.length }} ·
 						{{ selectedRound.duration_minutes }} minutes
@@ -154,28 +161,48 @@ function sessionStorageClear(): void {
 							style="width: 100%; padding: 11px; border-radius: 10px; background: var(--rc-surface-2); color: var(--rc-text); border: 1px solid var(--rc-border); font-size: 15px"
 							:value="selectedRound.id"
 							@change="selectedRound = session.rounds.find((r) => r.id === ($event.target as HTMLSelectElement).value) ?? selectedRound">
-							<option v-for="round in session.rounds" :key="round.id" :value="round.id">
+							<option
+								v-for="round in session.rounds"
+								:key="round.id"
+								:value="round.id"
+								:disabled="!!round.recorded_state">
 								Round {{ round.position }} — {{ round.title || round.question || 'Untitled' }}
+								{{ round.recorded_state ? ' ✓ recorded' : '' }}
 							</option>
 						</select>
 					</div>
-				</template>
-				<p v-else class="rc-alert">This assembly has no rounds yet.</p>
-			</div>
-			<button
-				class="rc-btn rc-record"
-				:disabled="!selectedRound"
-				@click="screen = 'recording'">
-				<SvgIcon :path="mdiRecordCircleOutline" :size="22" />
-				Start recording
-			</button>
+				</div>
+				<button
+					class="rc-btn rc-record"
+					:disabled="!!selectedRound.recorded_state"
+					@click="screen = 'recording'">
+					<SvgIcon :path="mdiRecordCircleOutline" :size="22" />
+					Start recording
+				</button>
+			</template>
+
+			<template v-else-if="session.rounds.length === 0">
+				<div class="rc-alert">This assembly has no rounds yet.</div>
+			</template>
+
+			<template v-else>
+				<div class="rc-card rc-center">
+					<p class="rc-eyebrow">All rounds recorded</p>
+					<p class="rc-muted" style="margin: 0">
+						This table has completed every round. Thank you!
+					</p>
+				</div>
+			</template>
+
 			<button class="rc-btn rc-subtle" @click="screen = 'preflight'">Back to microphone test</button>
 		</div>
 
 		<RecordingScreen
 			v-else-if="screen === 'recording' && session && selectedRound"
+			:key="selectedRound.id"
 			:session="session"
 			:round="selectedRound"
-			@exit="screen = 'ready'" />
+			@exit="screen = 'ready'"
+			@next-round="(round: RoundInfo) => { selectedRound = round; }" />
 	</div>
 </template>

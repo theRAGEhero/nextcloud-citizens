@@ -12,7 +12,7 @@ import { recorderApi, type JoinResult, type RoundInfo } from '../api'
 import { clearSynchronizedRecordings, RecorderEngine } from '../engine'
 
 const props = defineProps<{ session: JoinResult; round: RoundInfo }>()
-const emit = defineEmits<{ exit: [] }>()
+const emit = defineEmits<{ exit: []; nextRound: [round: RoundInfo] }>()
 
 const engine = new RecorderEngine()
 const state = engine.state
@@ -26,6 +26,27 @@ const showLive = ref(false)
 const liveLines = ref<Array<{ t: number; text: string }>>([])
 const liveChecked = ref(false)
 const captionsBox = ref<HTMLElement | null>(null)
+const nextRound = ref<RoundInfo | null>(null)
+
+let nextRoundTimer = 0
+
+// After finishing, the device is locked: it only offers the next un-recorded
+// round once the facilitator activates it (no accidental re-recordings).
+function watchForNextRound(): void {
+	if (nextRoundTimer) return
+	const poll = async () => {
+		try {
+			const status = await recorderApi.status(props.session.session_token)
+			nextRound.value =
+				status.rounds.find((r) => r.status === 'ACTIVE' && !r.recorded_state && r.id !== props.round.id) ??
+				null
+		} catch {
+			/* offline — retried on next tick */
+		}
+	}
+	void poll()
+	nextRoundTimer = window.setInterval(() => void poll(), 10_000)
+}
 
 let clockTimer = 0
 let levelTimer = 0
@@ -48,6 +69,13 @@ watch(liveLines, () => {
 		captionsBox.value?.scrollTo({ top: captionsBox.value.scrollHeight })
 	})
 })
+
+watch(
+	() => state.phase,
+	(phase) => {
+		if (phase === 'done') watchForNextRound()
+	},
+)
 
 onMounted(async () => {
 	clockTimer = window.setInterval(() => (now.value = Date.now()), 500)
@@ -104,6 +132,7 @@ onBeforeUnmount(() => {
 	window.clearInterval(levelTimer)
 	window.clearInterval(roundPollTimer)
 	window.clearInterval(livePollTimer)
+	window.clearInterval(nextRoundTimer)
 	audioContext?.close()
 	wakeLock?.release().catch(() => undefined)
 	document.removeEventListener('visibilitychange', reacquireWakeLock)
@@ -264,10 +293,24 @@ async function clearSynced(): Promise<void> {
 				<div class="rc-hero__icon rc-hero__icon--ok"><SvgIcon :path="mdiCheckCircle" :size="52" /></div>
 				<h1>Recording synchronized</h1>
 				<p class="rc-muted" style="margin-top: 10px">
-					The table recording was uploaded and validated by the server.
+					Round {{ round.position }} is complete for this table.
+					The recording was uploaded and validated by the server.
 				</p>
 				<p v-if="clearedNote" class="rc-muted">{{ clearedNote }}</p>
-				<button class="rc-btn" style="margin-top: 24px" @click="emit('exit')">Back to start</button>
+
+				<template v-if="nextRound">
+					<div class="rc-note" style="text-align: left; margin-top: 20px">
+						<strong>Round {{ nextRound.position }} has started.</strong><br />
+						{{ nextRound.question || nextRound.title }}
+					</div>
+					<button class="rc-btn rc-record" @click="emit('nextRound', nextRound)">
+						Start recording — Round {{ nextRound.position }}
+					</button>
+				</template>
+				<p v-else class="rc-muted rc-center" style="margin-top: 20px; font-size: 13.5px">
+					Keep this page open — the next round will appear here when the facilitator starts it.
+				</p>
+
 				<button v-if="!clearedNote" class="rc-btn rc-subtle" @click="clearSynced">
 					Clear synchronized audio from this phone
 				</button>
