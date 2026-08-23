@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# App runtime data (never commit recordings, DBs, logs, secrets)
+persistent_storage/
+*.db
+*.db-wal
+*.db-shm
+logs/
+*.log
+.env
+.env.*
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
