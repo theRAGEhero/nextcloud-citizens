@@ -23,11 +23,16 @@ RECORDER_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#1b1b1b">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#17181c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Citizens — Table Recorder</title>
 <style>
-  html, body { margin: 0; background: #1b1b1b; color: #eee;
+  /* app-style shell: the page itself never scrolls or bounces */
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none;
+    position: fixed; inset: 0; width: 100%; background: #17181c; color: #eee;
     font-family: system-ui, -apple-system, sans-serif; }
   #boot { padding: 40px 20px; text-align: center; color: #888; }
 </style>

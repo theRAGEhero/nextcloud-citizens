@@ -110,26 +110,32 @@ function sessionStorageClear(): void {
 </script>
 
 <template>
-	<div>
-		<div v-if="screen === 'joining'" class="rc-hero" style="padding-top: 90px">
-			<div class="rc-hero__icon"><span class="rc-spin" style="width: 30px; height: 30px"></span></div>
-			<p class="rc-muted">Connecting to the assembly…</p>
+	<div class="rc-screen">
+		<div v-if="screen === 'joining'" class="rc-scroll">
+			<div class="rc-hero" style="padding-top: 26vh">
+				<div class="rc-hero__icon"><span class="rc-spin" style="width: 30px; height: 30px"></span></div>
+				<p class="rc-muted">Connecting to the assembly…</p>
+			</div>
 		</div>
 
-		<div v-else-if="screen === 'no-invite'" class="rc-hero" style="padding-top: 70px">
-			<div class="rc-hero__icon"><SvgIcon :path="mdiQrcodeScan" :size="44" style="color: var(--rc-blue)" /></div>
-			<h1>Table Recorder</h1>
-			<p class="rc-muted" style="margin-top: 14px">
-				Open this page by scanning your table's QR code.<br />
-				Ask the facilitator for the QR sheet.
-			</p>
+		<div v-else-if="screen === 'no-invite'" class="rc-scroll">
+			<div class="rc-hero" style="padding-top: 18vh">
+				<div class="rc-hero__icon"><SvgIcon :path="mdiQrcodeScan" :size="44" style="color: var(--rc-blue)" /></div>
+				<h1>Table Recorder</h1>
+				<p class="rc-muted" style="margin-top: 14px">
+					Open this page by scanning your table's QR code.<br />
+					Ask the facilitator for the QR sheet.
+				</p>
+			</div>
 		</div>
 
-		<div v-else-if="screen === 'error'" class="rc-hero" style="padding-top: 70px">
-			<div class="rc-hero__icon"><SvgIcon :path="mdiAlertCircleOutline" :size="44" style="color: var(--rc-red)" /></div>
-			<h1>Cannot join</h1>
-			<div class="rc-alert" style="text-align: left">{{ error }}</div>
-			<p class="rc-muted">The QR code may have been revoked. Ask the facilitator for a new one.</p>
+		<div v-else-if="screen === 'error'" class="rc-scroll">
+			<div class="rc-hero" style="padding-top: 14vh">
+				<div class="rc-hero__icon"><SvgIcon :path="mdiAlertCircleOutline" :size="44" style="color: var(--rc-red)" /></div>
+				<h1>Cannot join</h1>
+				<div class="rc-alert" style="text-align: left">{{ error }}</div>
+				<p class="rc-muted">The QR code may have been revoked. Ask the facilitator for a new one.</p>
+			</div>
 		</div>
 
 		<RecoverySync
@@ -143,59 +149,64 @@ function sessionStorageClear(): void {
 			:session="session"
 			@ready="screen = 'ready'" />
 
-		<div v-else-if="screen === 'ready' && session">
-			<div class="rc-hero" style="padding-top: 16px; padding-bottom: 8px">
-				<p class="rc-eyebrow">{{ session.assembly.name }}</p>
-				<div class="rc-hero__table">TABLE {{ session.table_number }}</div>
+		<template v-else-if="screen === 'ready' && session">
+			<div class="rc-scroll">
+				<div class="rc-hero" style="padding-top: 16px; padding-bottom: 8px">
+					<p class="rc-eyebrow">{{ session.assembly.name }}</p>
+					<div class="rc-hero__table">TABLE {{ session.table_number }}</div>
+				</div>
+
+				<template v-if="selectedRound">
+					<div class="rc-card">
+						<p class="rc-eyebrow" style="margin-bottom: 4px">
+							Round {{ selectedRound.position }} of {{ session.rounds.length }} ·
+							{{ selectedRound.duration_minutes }} minutes
+						</p>
+						<p class="rc-question" style="margin: 0">{{ selectedRound.question || selectedRound.title }}</p>
+						<div v-if="session.rounds.length > 1" style="margin-top: 14px">
+							<select
+								style="width: 100%; padding: 11px; border-radius: 10px; background: var(--rc-surface-2); color: var(--rc-text); border: 1px solid var(--rc-border); font-size: 15px"
+								:value="selectedRound.id"
+								@change="selectedRound = session.rounds.find((r) => r.id === ($event.target as HTMLSelectElement).value) ?? selectedRound">
+								<option
+									v-for="round in session.rounds"
+									:key="round.id"
+									:value="round.id"
+									:disabled="!!round.recorded_state">
+									Round {{ round.position }} — {{ round.title || round.question || 'Untitled' }}
+									{{ round.recorded_state ? ' ✓ recorded' : '' }}
+								</option>
+							</select>
+						</div>
+					</div>
+				</template>
+
+				<template v-else-if="session.rounds.length === 0">
+					<div class="rc-alert">This assembly has no rounds yet.</div>
+				</template>
+
+				<template v-else>
+					<div class="rc-card rc-center">
+						<p class="rc-eyebrow">All rounds recorded</p>
+						<p class="rc-muted" style="margin: 0">
+							This table has completed every round. Thank you!
+						</p>
+					</div>
+				</template>
 			</div>
 
-			<template v-if="selectedRound">
-				<div class="rc-card">
-					<p class="rc-eyebrow" style="margin-bottom: 4px">
-						Round {{ selectedRound.position }} of {{ session.rounds.length }} ·
-						{{ selectedRound.duration_minutes }} minutes
-					</p>
-					<p class="rc-question" style="margin: 0">{{ selectedRound.question || selectedRound.title }}</p>
-					<div v-if="session.rounds.length > 1" style="margin-top: 14px">
-						<select
-							style="width: 100%; padding: 11px; border-radius: 10px; background: var(--rc-surface-2); color: var(--rc-text); border: 1px solid var(--rc-border); font-size: 15px"
-							:value="selectedRound.id"
-							@change="selectedRound = session.rounds.find((r) => r.id === ($event.target as HTMLSelectElement).value) ?? selectedRound">
-							<option
-								v-for="round in session.rounds"
-								:key="round.id"
-								:value="round.id"
-								:disabled="!!round.recorded_state">
-								Round {{ round.position }} — {{ round.title || round.question || 'Untitled' }}
-								{{ round.recorded_state ? ' ✓ recorded' : '' }}
-							</option>
-						</select>
-					</div>
-				</div>
+			<div class="rc-actions">
 				<button
+					v-if="selectedRound"
 					class="rc-btn rc-record"
 					:disabled="!!selectedRound.recorded_state"
 					@click="screen = 'recording'">
 					<SvgIcon :path="mdiRecordCircleOutline" :size="22" />
 					Start recording
 				</button>
-			</template>
-
-			<template v-else-if="session.rounds.length === 0">
-				<div class="rc-alert">This assembly has no rounds yet.</div>
-			</template>
-
-			<template v-else>
-				<div class="rc-card rc-center">
-					<p class="rc-eyebrow">All rounds recorded</p>
-					<p class="rc-muted" style="margin: 0">
-						This table has completed every round. Thank you!
-					</p>
-				</div>
-			</template>
-
-			<button class="rc-btn rc-subtle" @click="screen = 'preflight'">Back to microphone test</button>
-		</div>
+				<button class="rc-btn rc-subtle" @click="screen = 'preflight'">Back to microphone test</button>
+			</div>
+		</template>
 
 		<RecordingScreen
 			v-else-if="screen === 'recording' && session && selectedRound"

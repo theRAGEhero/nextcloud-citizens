@@ -161,11 +161,12 @@ const STATE_CLASS: Record<CheckState, string> = {
 </script>
 
 <template>
-	<div>
+	<div class="rc-fill">
 		<div class="rc-header">
 			<span class="rc-table-badge">TABLE {{ session.table_number }}</span>
 		</div>
 
+		<div class="rc-scroll">
 		<div class="rc-card">
 			<h2>Microphone test</h2>
 			<div v-for="row in ROWS" :key="row.key" class="rc-status-row">
@@ -211,7 +212,10 @@ const STATE_CLASS: Record<CheckState, string> = {
 			This browser cannot store audio locally. Recording would not be safe — please use a different
 			browser or disable private mode.
 		</div>
+		</div>
 
-		<button class="rc-btn rc-primary" :disabled="!canProceed()" @click="emit('ready')">READY</button>
+		<div class="rc-actions">
+			<button class="rc-btn rc-primary" :disabled="!canProceed()" @click="emit('ready')">READY</button>
+		</div>
 	</div>
 </template>

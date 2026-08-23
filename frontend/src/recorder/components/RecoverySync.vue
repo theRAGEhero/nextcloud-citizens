@@ -18,11 +18,12 @@ onMounted(() => {
 </script>
 
 <template>
-	<div>
+	<div class="rc-fill">
 		<div class="rc-header">
 			<span class="rc-table-badge">TABLE {{ session.table_number }}</span>
 		</div>
 
+		<div class="rc-scroll">
 		<div class="rc-card">
 			<h2>Recovered recording</h2>
 			<p class="rc-muted">
@@ -62,5 +63,6 @@ onMounted(() => {
 			<button class="rc-btn" @click="engine.retryNow()">Try again</button>
 			<button class="rc-btn rc-subtle" @click="emit('done')">Skip for now</button>
 		</template>
+		</div>
 	</div>
 </template>

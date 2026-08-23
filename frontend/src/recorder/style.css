@@ -19,22 +19,75 @@
 html,
 body {
 	margin: 0;
+	height: 100%;
+	overflow: hidden;
+	overscroll-behavior: none;
+	position: fixed;
+	inset: 0;
+	width: 100%;
 	background: #17181c;
 	color: #f0f1f3;
 	font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
+/* App shell: fixed full-height column — the PAGE never scrolls; only the
+ * .rc-scroll middle zone does, and primary actions stay pinned on screen. */
 #recorder-app {
 	max-width: 480px;
 	margin: 0 auto;
-	padding: 18px 18px 44px;
-	min-height: 100vh;
+	height: 100vh;
+	height: 100dvh;
 	box-sizing: border-box;
 	background: var(--rc-bg);
 	color: var(--rc-text);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	touch-action: manipulation;
+	-webkit-tap-highlight-color: transparent;
 }
 
 #recorder-app *, #recorder-app *::before, #recorder-app *::after { box-sizing: border-box; }
+
+/* one screen = header + scrollable middle + pinned action bar */
+.rc-screen {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	padding: 14px 18px 0;
+}
+
+.rc-scroll {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: none;
+	padding-bottom: 10px;
+}
+
+.rc-scroll::-webkit-scrollbar { display: none; }
+
+/* component roots nested inside .rc-screen fill it */
+.rc-fill {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.rc-actions {
+	flex-shrink: 0;
+	padding: 8px 0 calc(14px + env(safe-area-inset-bottom, 0px));
+}
+
+/* UI chrome shouldn't be selectable like a document; transcripts stay selectable */
+.rc-header, .rc-btn, .rc-status-row__label, .rc-eyebrow, .rc-timer-label, .rc-table-badge {
+	user-select: none;
+	-webkit-user-select: none;
+}
 
 #recorder-app h1 { font-size: 22px; margin: 0; font-weight: 700; }
 #recorder-app h2 { font-size: 17px; margin: 0 0 12px; font-weight: 650; }

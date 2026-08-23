@@ -169,18 +169,21 @@ async function clearSynced(): Promise<void> {
 </script>
 
 <template>
-	<div>
+	<div class="rc-fill">
 		<div class="rc-header">
 			<span class="rc-table-badge">TABLE {{ session.table_number }}</span>
 			<span v-if="state.phase === 'recording'" class="rc-live">RECORDING</span>
 		</div>
 
-		<div v-if="startError" class="rc-alert">
-			Could not start recording: {{ startError }}
-			<button class="rc-btn" style="margin-top: 12px" @click="emit('exit')">Back</button>
+		<div v-if="startError" class="rc-scroll">
+			<div class="rc-alert">
+				Could not start recording: {{ startError }}
+				<button class="rc-btn" style="margin-top: 12px" @click="emit('exit')">Back</button>
+			</div>
 		</div>
 
 		<template v-else-if="state.phase === 'recording' || state.phase === 'finishing'">
+			<div class="rc-scroll">
 			<div class="rc-card" style="padding: 14px 18px">
 				<p class="rc-eyebrow" style="margin: 0 0 4px">Round {{ round.position }} of {{ session.rounds.length }}</p>
 				<p class="rc-question" style="margin: 0">{{ round.question || round.title }}</p>
@@ -261,56 +264,63 @@ async function clearSynced(): Promise<void> {
 						<p v-for="(line, index) in liveLines" :key="index" class="rc-caption">{{ line.text }}</p>
 					</div>
 				</div>
+			</template>
+			</div>
 
+			<div v-if="state.phase === 'recording'" class="rc-actions">
 				<button v-if="!confirmFinish" class="rc-btn" @click="confirmFinish = true">
 					Finish recording
 				</button>
 				<template v-else>
-					<div class="rc-note">Finish and synchronize this table's recording?</div>
-					<button class="rc-btn rc-primary" @click="finishRecording">Yes, finish and synchronize</button>
+					<div class="rc-note" style="margin: 0 0 8px">Finish and synchronize this table's recording?</div>
+					<button class="rc-btn rc-primary" style="margin-top: 0" @click="finishRecording">Yes, finish and synchronize</button>
 					<button class="rc-btn rc-subtle" @click="confirmFinish = false">Keep recording</button>
 				</template>
-			</template>
+			</div>
 		</template>
 
 		<template v-else-if="state.phase === 'syncing'">
-			<div class="rc-hero">
-				<div class="rc-hero__icon"><SvgIcon :path="mdiCloudUploadOutline" :size="44" style="color: var(--rc-blue)" /></div>
-				<h1>Synchronizing</h1>
-				<p class="rc-muted" style="margin-top: 10px; font-size: 16px">
-					<span style="font-variant-numeric: tabular-nums">{{ state.ackedChunks }} / {{ state.localChunks }}</span>
-					chunks uploaded
-					<template v-if="state.serverState"><br />Server: {{ state.serverState }}</template>
-				</p>
-				<div v-if="!state.uploadOnline" class="rc-note" style="text-align: left">
-					Waiting for network… the audio is safe on this phone. Keep this page open.
+			<div class="rc-scroll">
+				<div class="rc-hero">
+					<div class="rc-hero__icon"><SvgIcon :path="mdiCloudUploadOutline" :size="44" style="color: var(--rc-blue)" /></div>
+					<h1>Synchronizing</h1>
+					<p class="rc-muted" style="margin-top: 10px; font-size: 16px">
+						<span style="font-variant-numeric: tabular-nums">{{ state.ackedChunks }} / {{ state.localChunks }}</span>
+						chunks uploaded
+						<template v-if="state.serverState"><br />Server: {{ state.serverState }}</template>
+					</p>
+					<div v-if="!state.uploadOnline" class="rc-note" style="text-align: left">
+						Waiting for network… the audio is safe on this phone. Keep this page open.
+					</div>
 				</div>
 			</div>
 		</template>
 
 		<template v-else-if="state.phase === 'done'">
-			<div class="rc-hero">
-				<div class="rc-hero__icon rc-hero__icon--ok"><SvgIcon :path="mdiCheckCircle" :size="52" /></div>
-				<h1>Recording synchronized</h1>
-				<p class="rc-muted" style="margin-top: 10px">
-					Round {{ round.position }} is complete for this table.
-					The recording was uploaded and validated by the server.
-				</p>
-				<p v-if="clearedNote" class="rc-muted">{{ clearedNote }}</p>
+			<div class="rc-scroll">
+				<div class="rc-hero">
+					<div class="rc-hero__icon rc-hero__icon--ok"><SvgIcon :path="mdiCheckCircle" :size="52" /></div>
+					<h1>Recording synchronized</h1>
+					<p class="rc-muted" style="margin-top: 10px">
+						Round {{ round.position }} is complete for this table.
+						The recording was uploaded and validated by the server.
+					</p>
+					<p v-if="clearedNote" class="rc-muted">{{ clearedNote }}</p>
 
-				<template v-if="nextRound">
-					<div class="rc-note" style="text-align: left; margin-top: 20px">
+					<div v-if="nextRound" class="rc-note" style="text-align: left; margin-top: 20px">
 						<strong>Round {{ nextRound.position }} has started.</strong><br />
 						{{ nextRound.question || nextRound.title }}
 					</div>
-					<button class="rc-btn rc-record" @click="emit('nextRound', nextRound)">
-						Start recording — Round {{ nextRound.position }}
-					</button>
-				</template>
-				<p v-else class="rc-muted rc-center" style="margin-top: 20px; font-size: 13.5px">
-					Keep this page open — the next round will appear here when the facilitator starts it.
-				</p>
+					<p v-else class="rc-muted rc-center" style="margin-top: 20px; font-size: 13.5px">
+						Keep this page open — the next round will appear here when the facilitator starts it.
+					</p>
+				</div>
+			</div>
 
+			<div class="rc-actions">
+				<button v-if="nextRound" class="rc-btn rc-record" style="margin-top: 0" @click="emit('nextRound', nextRound)">
+					Start recording — Round {{ nextRound.position }}
+				</button>
 				<button v-if="!clearedNote" class="rc-btn rc-subtle" @click="clearSynced">
 					Clear synchronized audio from this phone
 				</button>
@@ -318,12 +328,16 @@ async function clearSynced(): Promise<void> {
 		</template>
 
 		<template v-else-if="state.phase === 'failed'">
-			<div class="rc-alert" style="margin-top: 30px">
-				<strong>Something went wrong:</strong><br />{{ state.error }}
-				<br /><br />
-				Local audio chunks remain stored on this phone.
+			<div class="rc-scroll">
+				<div class="rc-alert" style="margin-top: 30px">
+					<strong>Something went wrong:</strong><br />{{ state.error }}
+					<br /><br />
+					Local audio chunks remain stored on this phone.
+				</div>
 			</div>
-			<button class="rc-btn" @click="emit('exit')">Back</button>
+			<div class="rc-actions">
+				<button class="rc-btn" style="margin-top: 0" @click="emit('exit')">Back</button>
+			</div>
 		</template>
 	</div>
 </template>

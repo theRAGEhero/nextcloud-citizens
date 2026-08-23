@@ -4,6 +4,15 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Recorder app-shell — 2026-08-24
+
+- The phone recorder now behaves like a native app: page scrolling and
+  overscroll-bounce are fully locked (fixed 100dvh shell, no pinch-zoom or
+  double-tap zoom), each screen is header + internally-scrollable middle +
+  pinned action bar with safe-area padding — READY / Start / Finish are
+  always on screen, even with the live transcript panel open.
+
+
 ### Milestones 6 + 7-lite — 2026-08-24 (AI analysis, reports, recorder lock, GitHub)
 
 - **AI analysis pipeline**: after transcription, each table is analyzed by the
