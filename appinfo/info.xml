@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<info>
+	<id>citizens</id>
+	<name>Nextcloud Citizens</name>
+	<summary>Run physical citizens' assemblies: offline-first table recording, transcription, evidence-linked analysis</summary>
+	<description>
+	<![CDATA[Nextcloud Citizens supports in-person citizens' assemblies. One ordinary phone
+per discussion table records audio offline-first, uploads it safely when
+connectivity allows, and the app produces diarized transcripts and
+evidence-linked AI analysis that a human organizer reviews and approves.]]>
+	</description>
+	<version>0.1.0</version>
+	<licence>agpl</licence>
+	<author mail="philip@decentsoftwa.re">Philip</author>
+	<namespace>Citizens</namespace>
+	<category>tools</category>
+	<website>https://github.com/decentsoftware/nextcloud-citizens</website>
+	<bugs>https://github.com/decentsoftware/nextcloud-citizens/issues</bugs>
+	<dependencies>
+		<nextcloud min-version="32" max-version="35"/>
+	</dependencies>
+	<external-app>
+		<!-- Route regexes are matched against the request path WITHOUT a
+		     leading slash and wrapped in /.../i delimiters by AppAPI, so
+		     patterns must start with e.g. ^js\/ (never ^/). -->
+		<routes>
+			<route>
+				<url>^js\/.*</url>
+				<verb>GET</verb>
+				<access_level>USER</access_level>
+			</route>
+			<route>
+				<url>^css\/.*</url>
+				<verb>GET</verb>
+				<access_level>USER</access_level>
+			</route>
+			<route>
+				<url>^img\/.*</url>
+				<verb>GET</verb>
+				<access_level>USER</access_level>
+			</route>
+			<route>
+				<url>^api\/v1\/health$</url>
+				<verb>GET</verb>
+				<access_level>USER</access_level>
+			</route>
+			<route>
+				<url>^api\/v1\/admin\/.*</url>
+				<verb>GET,POST,PUT,DELETE</verb>
+				<access_level>ADMIN</access_level>
+			</route>
+		</routes>
+	</external-app>
+</info>

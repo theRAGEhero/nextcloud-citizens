@@ -1,0 +1,9 @@
+.git
+.venv
+node_modules
+persistent_storage
+tests
+docs
+.app_secret
+*.md
+!README.md
