@@ -107,8 +107,41 @@ client log ring (IndexedDB)           ──►  logs/devices/<session>.jsonl
 - Facilitator "Live" tab polls `/rounds/{id}/monitor`: device connectivity
   (heartbeat age), chunk upload progress, and "local recording safe" only
   when a recent heartbeat reports healthy storage.
-- Round start/end is organizer-controlled; recorders poll and prompt (no
-  remote mic activation).
+- Round start/end is organizer-controlled; recorders only ever poll — the
+  server never reaches into a phone. In orchestrated mode the phone *arms*
+  itself on an explicit READY tap (that tap is the user gesture + consent and
+  opens the mic), then polling turns facilitator start/end into auto
+  start/finish. In independent mode the tap starts recording directly.
+
+## Recording modes (per assembly)
+
+- **Orchestrated** (live event, the default): tables tap READY once and sit
+  on an Armed screen sending `armed` heartbeats. The Live tab shows
+  "N/M tables ready" and warns (never blocks) when starting incomplete.
+  Facilitator Start → armed phones begin recording together; the server
+  rejects `recorder/start` for rounds that are not ACTIVE (409). Facilitator
+  End → phones show a 15 s cancellable "finishing" countdown ("Keep talking"
+  aborts), then finish and synchronize; the done screen re-arms for the next
+  round automatically.
+- **Independent** (async): rounds act as shared questions, not timed windows.
+  Each table records any un-recorded round on its own schedule (days apart if
+  needed); Start/End round controls are hidden on the Live tab. Cross-table
+  clustering re-runs incrementally as each table's analysis lands (draft
+  round findings are replaced, reviewed ones kept).
+- Both modes: one healthy recording per table+round; the recorder locks after
+  finish so no stray recordings appear.
+
+## Analysis output
+
+- Every analyzed table stores a mandatory neutral AI `analysis_summary`
+  (2–4 sentences, assembly language) alongside findings; rounds store a
+  cross-table summary. Summaries always render in the Analysis tab and
+  reports labeled as AI-generated, so a session with no substantive findings
+  (small talk) still reads as "analyzed", not as an empty failure state.
+  Findings remain evidence-linked drafts until human review.
+- STT models are configured separately for live captions and final
+  transcription per provider (Deepgram live/batch, Mistral batch; Mistral
+  live reserved for Voxtral Realtime).
 
 ## Dev workflow
 
