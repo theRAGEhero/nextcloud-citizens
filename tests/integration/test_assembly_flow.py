@@ -73,7 +73,7 @@ def test_invites_lifecycle(client):
     invites = generated.json()
     assert len(invites) == 10
     assert all("<svg" in invite["qr_svg"] for invite in invites)
-    assert all("/recorder/#/join/" in invite["url"] for invite in invites)
+    assert all("/recorder.html#/join/" in invite["url"] for invite in invites)
     # raw tokens are never repeated by the listing endpoint
     listing = client.get(f"/api/v1/assemblies/{assembly['id']}/invites").json()
     assert len(listing) == 10

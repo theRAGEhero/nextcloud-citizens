@@ -14,9 +14,10 @@ from citizens.security.recorder_tokens import generate_token, hash_token
 def recorder_join_url(token: str) -> str:
     """The URL a table phone opens. The token travels in the fragment so it
     never appears in server access logs; the recorder page exchanges it for a
-    short-lived session (Milestone 2)."""
+    short-lived session. The path MUST end in .html — that's what makes the
+    AppAPI proxy inject its CSP nonce into the page's scripts."""
     base = get_settings().nextcloud_url.rstrip("/")
-    return f"{base}/index.php/apps/app_api/proxy/citizens/recorder/#/join/{token}"
+    return f"{base}/index.php/apps/app_api/proxy/citizens/recorder.html#/join/{token}"
 
 
 def generate_invites(session: Session, assembly: Assembly) -> list[schemas.InviteGenerated]:
@@ -45,7 +46,9 @@ def generate_invites(session: Session, assembly: Assembly) -> list[schemas.Invit
             schemas.InviteGenerated(
                 table_number=number,
                 url=url,
-                qr_svg=qr.svg_inline(scale=4, dark="#000000"),
+                # omitsize → viewBox instead of fixed px size, so CSS can
+                # scale the QR without clipping it
+                qr_svg=qr.svg_inline(scale=4, dark="#000000", omitsize=True),
             )
         )
     session.flush()

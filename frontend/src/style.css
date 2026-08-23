@@ -1,92 +1,132 @@
+/*
+ * Organizer UI. The AppAPI embedded page gives us a bare transparent
+ * <div id="content"> floating over the Nextcloud wallpaper — so the app root
+ * paints its own opaque surface, like every native Nextcloud app does.
+ */
+
+/* the embedded page's parent is a flex row; without this the surface
+   shrink-wraps to its content width */
+#content {
+	width: 100%;
+	flex: 1 1 auto;
+	align-self: stretch;
+	box-sizing: border-box;
+}
+
 #citizens-app {
-	max-width: 960px;
-	margin: 0 auto;
-	padding: 24px 20px 60px;
-	font-family: var(--font-face, system-ui, sans-serif);
+	box-sizing: border-box;
+	width: calc(100% - 2 * var(--body-container-margin, 8px));
+	flex: 1 1 auto;
+	background: var(--color-main-background, #fff);
 	color: var(--color-main-text, #222);
+	border-radius: var(--body-container-radius, 16px);
+	margin: var(--body-container-margin, 8px);
+	min-height: calc(100vh - 66px);
+	padding: 28px clamp(16px, 4vw, 40px) 60px;
+	font-family: var(--font-face, system-ui, sans-serif);
+	box-shadow: 0 0 4px 0 rgba(0, 0, 0, 0.12);
+	overflow-x: hidden;
+}
+
+#citizens-app > div {
+	max-width: 1080px;
+	margin: 0 auto;
 }
 
 #citizens-app h2 {
-	font-size: 26px;
+	font-size: 28px;
 	font-weight: 700;
 	margin: 0 0 4px;
 }
 
 #citizens-app h3 {
-	font-size: 18px;
+	font-size: 17px;
 	font-weight: 600;
 	margin: 0 0 10px;
 }
 
-.cz-muted {
+#citizens-app p {
+	line-height: 1.5;
+}
+
+#citizens-app .cz-muted {
 	color: var(--color-text-maxcontrast, #666);
 }
 
-.cz-card {
-	border: 1px solid var(--color-border, #ddd);
-	border-radius: var(--border-radius-large, 10px);
+#citizens-app .cz-card {
+	border: 1px solid var(--color-border, #e0e0e0);
+	border-radius: var(--border-radius-large, 12px);
 	background: var(--color-main-background, #fff);
-	padding: 16px 20px;
-	margin-bottom: 12px;
+	padding: 18px 22px;
+	margin-bottom: 14px;
 }
 
-.cz-card.cz-clickable {
+#citizens-app .cz-card.cz-clickable {
 	cursor: pointer;
+	transition: background 0.1s ease;
 }
 
-.cz-card.cz-clickable:hover {
+#citizens-app .cz-card.cz-clickable:hover {
 	background: var(--color-background-hover, #f5f5f5);
 }
 
-.cz-row {
+#citizens-app .cz-row {
 	display: flex;
 	align-items: center;
 	gap: 10px;
 	flex-wrap: wrap;
 }
 
-.cz-row.cz-spread {
+#citizens-app .cz-row.cz-spread {
 	justify-content: space-between;
 }
 
-.cz-btn {
+#citizens-app .cz-btn {
 	display: inline-block;
-	padding: 8px 16px;
-	border-radius: var(--border-radius-pill, 24px);
+	padding: 9px 18px;
+	border-radius: var(--border-radius-element, 24px);
 	border: 1px solid var(--color-border-dark, #ccc);
 	background: var(--color-main-background, #fff);
 	color: var(--color-main-text, #222);
 	font-size: 14px;
 	font-weight: 600;
 	cursor: pointer;
+	transition: background 0.1s ease;
 }
 
-.cz-btn:hover:not(:disabled) {
+#citizens-app .cz-btn:hover:not(:disabled) {
 	background: var(--color-background-hover, #f0f0f0);
 }
 
-.cz-btn.cz-primary {
+#citizens-app .cz-btn.cz-primary {
 	background: var(--color-primary-element, #00679e);
 	border-color: var(--color-primary-element, #00679e);
 	color: var(--color-primary-element-text, #fff);
 }
 
-.cz-btn.cz-primary:hover:not(:disabled) {
+#citizens-app .cz-btn.cz-primary:hover:not(:disabled) {
 	background: var(--color-primary-element-hover, #00527e);
 }
 
-.cz-btn.cz-danger {
-	color: var(--color-error, #b3261e);
-	border-color: var(--color-error, #b3261e);
+/* fixed red: NC's --color-error is a pastel background tone in NC 32+ themes
+   and produces illegible white-on-pink buttons */
+#citizens-app .cz-btn.cz-danger {
+	background: #c62828;
+	border-color: #c62828;
+	color: #fff;
 }
 
-.cz-btn:disabled {
+#citizens-app .cz-btn.cz-danger:hover:not(:disabled) {
+	background: #a51f1f;
+}
+
+#citizens-app .cz-btn:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
 }
 
-.cz-btn.cz-small {
-	padding: 4px 10px;
+#citizens-app .cz-btn.cz-small {
+	padding: 5px 12px;
 	font-size: 13px;
 	font-weight: 500;
 }
@@ -95,112 +135,180 @@
 #citizens-app input[type='number'],
 #citizens-app select,
 #citizens-app textarea {
-	padding: 8px 10px;
+	padding: 9px 12px;
 	border: 1px solid var(--color-border-dark, #ccc);
-	border-radius: var(--border-radius, 6px);
+	border-radius: var(--border-radius, 8px);
 	background: var(--color-main-background, #fff);
 	color: var(--color-main-text, #222);
 	font-size: 14px;
+	box-sizing: border-box;
+	max-width: 100%;
 }
 
-.cz-field {
+#citizens-app input:focus,
+#citizens-app select:focus,
+#citizens-app textarea:focus {
+	outline: 2px solid var(--color-primary-element, #00679e);
+	outline-offset: -1px;
+}
+
+#citizens-app .cz-field {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 5px;
 	margin-bottom: 14px;
+	min-width: 0;
 }
 
-.cz-field label {
+#citizens-app .cz-field label {
 	font-size: 13px;
 	font-weight: 600;
 	color: var(--color-text-maxcontrast, #555);
 }
 
-.cz-error {
-	background: color-mix(in srgb, var(--color-error, #b3261e) 12%, transparent);
-	color: var(--color-error, #b3261e);
-	border-radius: var(--border-radius, 6px);
+#citizens-app .cz-error {
+	background: color-mix(in srgb, #c62828 10%, var(--color-main-background, #fff));
+	color: var(--color-error-text, #b3261e);
+	border: 1px solid #c62828;
+	border-radius: var(--border-radius, 8px);
 	padding: 10px 14px;
 	margin: 10px 0;
+	font-weight: 500;
 }
 
-.cz-tabs {
+#citizens-app .cz-ok-note {
+	background: color-mix(in srgb, var(--color-success, #2d7b41) 12%, var(--color-main-background, #fff));
+	color: var(--color-success, #2d7b41);
+	border: 1px solid var(--color-success, #2d7b41);
+	border-radius: var(--border-radius, 8px);
+	padding: 10px 14px;
+	margin: 10px 0;
+	font-weight: 500;
+}
+
+#citizens-app .cz-tabs {
 	display: flex;
-	gap: 4px;
-	border-bottom: 1px solid var(--color-border, #ddd);
-	margin: 18px 0;
+	gap: 2px;
+	border-bottom: 2px solid var(--color-border, #ddd);
+	margin: 22px 0 20px;
+	overflow-x: auto;
 }
 
-.cz-tab {
-	padding: 8px 16px;
+#citizens-app .cz-tab {
+	padding: 10px 18px;
 	border: none;
 	background: none;
 	cursor: pointer;
-	font-size: 14px;
+	font-size: 15px;
 	font-weight: 600;
 	color: var(--color-text-maxcontrast, #666);
-	border-bottom: 2px solid transparent;
+	border-bottom: 3px solid transparent;
+	margin-bottom: -2px;
+	white-space: nowrap;
 }
 
-.cz-tab.cz-active {
+#citizens-app .cz-tab:hover {
+	color: var(--color-main-text, #222);
+	background: var(--color-background-hover, #f5f5f5);
+	border-radius: 8px 8px 0 0;
+}
+
+#citizens-app .cz-tab.cz-active {
 	color: var(--color-main-text, #222);
 	border-bottom-color: var(--color-primary-element, #00679e);
 }
 
-.cz-tables-grid {
+#citizens-app .cz-tables-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
 	gap: 12px;
 }
 
-.cz-chip {
+#citizens-app .cz-chip {
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
-	padding: 3px 10px;
+	padding: 4px 12px;
 	border-radius: 14px;
-	background: var(--color-background-dark, #eee);
+	background: var(--color-background-dark, #ededed);
+	color: var(--color-main-text, #222);
 	font-size: 13px;
+	font-weight: 600;
 }
 
-.cz-qr-grid {
+#citizens-app .cz-qr-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
 	gap: 16px;
 }
 
-.cz-qr-item {
+#citizens-app .cz-qr-item {
 	text-align: center;
 	border: 1px solid var(--color-border, #ddd);
-	border-radius: 10px;
-	padding: 18px;
+	border-radius: 12px;
+	padding: 20px;
 	background: #fff;
 	color: #000;
 }
 
-.cz-qr-item svg {
-	width: 200px;
-	height: 200px;
+#citizens-app .cz-qr-item h3 {
+	color: #000;
 }
 
-.cz-qr-url {
+#citizens-app .cz-qr-item svg {
+	width: 100%;
+	max-width: 220px;
+	height: auto;
+	display: block;
+	margin: 0 auto;
+}
+
+#citizens-app .cz-qr-url {
 	font-size: 10px;
 	word-break: break-all;
 	color: #555;
 	margin-top: 8px;
 }
 
-table.cz-table {
+#citizens-app table.cz-table {
 	width: 100%;
 	border-collapse: collapse;
 }
 
-table.cz-table th,
-table.cz-table td {
+#citizens-app table.cz-table th {
+	font-size: 13px;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	color: var(--color-text-maxcontrast, #666);
+}
+
+#citizens-app table.cz-table th,
+#citizens-app table.cz-table td {
 	text-align: left;
-	padding: 6px 10px;
+	padding: 8px 10px;
 	border-bottom: 1px solid var(--color-border, #eee);
 	font-size: 14px;
+}
+
+#citizens-app table.cz-table tbody tr:hover {
+	background: var(--color-background-hover, #f7f7f7);
+}
+
+@media (max-width: 640px) {
+	#citizens-app {
+		padding: 18px 14px 40px;
+		margin: 0;
+		border-radius: 0;
+		min-height: calc(100vh - 50px);
+	}
+
+#citizens-app .cz-row.cz-spread {
+		align-items: flex-start;
+	}
+
+	#citizens-app h2 {
+		font-size: 22px;
+	}
 }
 
 @media print {
@@ -208,17 +316,19 @@ table.cz-table td {
 		visibility: hidden;
 	}
 
-	.cz-qr-grid,
-	.cz-qr-grid * {
+#citizens-app .cz-qr-grid,
+#citizens-app .cz-qr-grid * {
 		visibility: visible;
 	}
 
-	.cz-qr-grid {
+#citizens-app .cz-qr-grid {
 		position: absolute;
 		inset: 0;
+		grid-template-columns: repeat(2, 1fr);
 	}
 
-	.cz-qr-item {
+#citizens-app .cz-qr-item {
 		break-inside: avoid;
+		border: 1px solid #000;
 	}
 }

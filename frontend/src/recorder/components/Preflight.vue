@@ -18,12 +18,13 @@ const checks = ref<Record<string, { state: CheckState; note: string }>>({
 })
 const level = ref(0)
 const testState = ref<'idle' | 'recording' | 'ready' | 'playing'>('idle')
-const testUrl = ref('')
 
 let stream: MediaStream | null = null
 let audioContext: AudioContext | null = null
 let levelTimer = 0
 let testRecorder: MediaRecorder | null = null
+let testBuffer: AudioBuffer | null = null
+let testSource: AudioBufferSourceNode | null = null
 
 function set(check: string, state: CheckState, note = ''): void {
 	checks.value[check] = { state, note }
@@ -91,9 +92,9 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
 	window.clearInterval(levelTimer)
+	testSource?.stop()
 	stream?.getTracks().forEach((track) => track.stop())
 	audioContext?.close()
-	if (testUrl.value) URL.revokeObjectURL(testUrl.value)
 })
 
 function recordTest(): void {
@@ -104,20 +105,31 @@ function recordTest(): void {
 	const blobs: Blob[] = []
 	testRecorder = new MediaRecorder(stream, { mimeType: mime })
 	testRecorder.ondataavailable = (event) => blobs.push(event.data)
-	testRecorder.onstop = () => {
-		if (testUrl.value) URL.revokeObjectURL(testUrl.value)
-		testUrl.value = URL.createObjectURL(new Blob(blobs, { type: mime }))
-		testState.value = 'ready'
+	testRecorder.onstop = async () => {
+		// Decode via WebAudio: blob: URLs in an <audio> element are blocked by
+		// the Nextcloud proxy's CSP (media-src 'self'); decodeAudioData is not.
+		try {
+			const data = await new Blob(blobs, { type: mime }).arrayBuffer()
+			if (!audioContext) audioContext = new AudioContext()
+			testBuffer = await audioContext.decodeAudioData(data)
+			testState.value = 'ready'
+		} catch {
+			testBuffer = null
+			testState.value = 'idle'
+		}
 	}
 	testRecorder.start()
 	window.setTimeout(() => testRecorder?.stop(), 5000)
 }
 
 function playTest(): void {
-	const audio = new Audio(testUrl.value)
+	if (!testBuffer || !audioContext) return
 	testState.value = 'playing'
-	audio.onended = () => (testState.value = 'ready')
-	audio.play()
+	testSource = audioContext.createBufferSource()
+	testSource.buffer = testBuffer
+	testSource.connect(audioContext.destination)
+	testSource.onended = () => (testState.value = 'ready')
+	testSource.start()
 }
 
 // Only microphone or local-storage failure blocks recording (brief §15)

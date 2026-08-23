@@ -25,7 +25,7 @@ function seed(): Seed {
 }
 
 async function startRecording(page: Page, token: string): Promise<void> {
-	await page.goto(`/recorder/?chunkms=${CHUNK_MS}#/join/${encodeURIComponent(token)}`)
+	await page.goto(`/recorder.html?chunkms=${CHUNK_MS}#/join/${encodeURIComponent(token)}`)
 	await expect(page.getByText('Microphone test')).toBeVisible({ timeout: 15_000 })
 	await expect(page.getByRole('button', { name: 'READY' })).toBeEnabled({ timeout: 15_000 })
 	await page.getByRole('button', { name: 'READY' }).click()

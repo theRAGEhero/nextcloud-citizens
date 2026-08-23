@@ -1,12 +1,21 @@
 """Public recorder page (no Nextcloud chrome; loads the lean recorder bundle).
 
-The page computes its own base URL from location.pathname, so it works with
-and without a trailing slash, through /apps/app_api/proxy/... or a /exapps/
-rewrite.
+Served at /recorder.html: the AppAPI proxy injects its CSP nonce into <script>
+tags ONLY for paths ending in .html — any other path gets Nextcloud's strict
+CSP with no nonce and inline scripts are silently blocked. /recorder and
+/recorder/ redirect here so older QR links keep working (the URL fragment
+with the invite token survives redirects client-side).
+
+The page computes its own base URL from location.pathname, so it works
+through /apps/app_api/proxy/... or a /exapps/ rewrite, and propagates the
+injected nonce to the dynamically loaded bundle for browsers without
+'strict-dynamic' support.
 """
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
+
+from citizens.config import get_settings
 
 router = APIRouter()
 
@@ -27,12 +36,14 @@ RECORDER_HTML = """<!DOCTYPE html>
 <div id="recorder-app"><div id="boot">Loading recorder…</div></div>
 <script>
 (function () {
+  var current = document.currentScript;
   var path = window.location.pathname;
   var idx = path.lastIndexOf('/recorder');
-  var base = idx >= 0 ? path.slice(0, idx + '/recorder'.length) : path.replace(/\\/$/, '');
-  window.__CITIZENS_RECORDER_BASE__ = base;
+  var base = idx >= 0 ? path.slice(0, idx) : path.replace(/\\/[^\\/]*$/, '');
+  window.__CITIZENS_RECORDER_BASE__ = base + '/recorder';
   var s = document.createElement('script');
-  s.src = base + '/static/citizens-recorder.js';
+  if (current && current.nonce) { s.nonce = current.nonce; }
+  s.src = base + '/recorder/static/citizens-recorder.js?v=__APP_VERSION__';
   s.onerror = function () {
     document.getElementById('boot').textContent =
       'Failed to load the recorder application. Check the connection and reload.';
@@ -40,7 +51,7 @@ RECORDER_HTML = """<!DOCTYPE html>
   document.body.appendChild(s);
   var l = document.createElement('link');
   l.rel = 'stylesheet';
-  l.href = base + '/static/citizens-recorder.css';
+  l.href = base + '/recorder/static/citizens-recorder.css?v=__APP_VERSION__';
   document.head.appendChild(l);
 })();
 </script>
@@ -48,7 +59,36 @@ RECORDER_HTML = """<!DOCTYPE html>
 </html>"""
 
 
-@router.get("/recorder", response_class=HTMLResponse)
-@router.get("/recorder/", response_class=HTMLResponse)
-def recorder_page() -> str:
-    return RECORDER_HTML
+# The proxy forwards ExApp response headers, so the page ships its own CSP:
+# Nextcloud's own policy for proxied responses is `default-src 'none'` with no
+# script allowance whatsoever, which would block the app entirely.
+RECORDER_CSP = (
+    "default-src 'none'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "font-src 'self'; "
+    "connect-src 'self'; "
+    "media-src 'self' blob:; "
+    "frame-ancestors 'none'; "
+    "base-uri 'none'"
+)
+
+
+@router.get("/recorder.html")
+def recorder_page() -> HTMLResponse:
+    # version query busts the proxy/browser asset cache after app updates
+    html = RECORDER_HTML.replace("__APP_VERSION__", get_settings().app_version)
+    return HTMLResponse(html, headers={"Content-Security-Policy": RECORDER_CSP})
+
+
+@router.get("/recorder")
+def recorder_redirect() -> RedirectResponse:
+    # relative Location: from …/citizens/recorder → …/citizens/recorder.html
+    return RedirectResponse(url="recorder.html", status_code=302)
+
+
+@router.get("/recorder/")
+def recorder_redirect_slash() -> RedirectResponse:
+    # from …/citizens/recorder/ → …/citizens/recorder.html
+    return RedirectResponse(url="../recorder.html", status_code=302)

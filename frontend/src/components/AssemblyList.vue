@@ -3,7 +3,8 @@ import { onMounted, ref } from 'vue'
 import { api } from '../api'
 import type { Assembly } from '../types'
 
-const emit = defineEmits<{ create: []; open: [id: string] }>()
+defineProps<{ isAdmin?: boolean }>()
+const emit = defineEmits<{ create: []; open: [id: string]; settings: [] }>()
 
 const assemblies = ref<Assembly[]>([])
 const loading = ref(true)
@@ -27,7 +28,10 @@ onMounted(async () => {
 				<h2>Nextcloud Citizens</h2>
 				<p class="cz-muted">Citizens' assemblies: offline-first table recording, transcription and reviewed analysis.</p>
 			</div>
-			<button class="cz-btn cz-primary" @click="emit('create')">+ New assembly</button>
+			<div class="cz-row">
+				<button v-if="isAdmin" class="cz-btn" @click="emit('settings')">⚙ Settings</button>
+				<button class="cz-btn cz-primary" @click="emit('create')">+ New assembly</button>
+			</div>
 		</div>
 
 		<div v-if="error" class="cz-error">{{ error }}</div>

@@ -4,6 +4,7 @@ import type {
 	Invite,
 	InviteGenerated,
 	Participant,
+	ProvidersSummary,
 	Round,
 	RoundIn,
 	RoundMonitor,
@@ -93,6 +94,13 @@ export const api = {
 			participant_id: participantId,
 			to_table_id: toTableId,
 		}),
+
+	adminPing: () => request<{ ok: boolean }>('GET', '/api/v1/admin/ping'),
+	getProviders: () => request<ProvidersSummary>('GET', '/api/v1/admin/providers'),
+	updateProviders: (payload: Record<string, unknown>) =>
+		request<ProvidersSummary>('PUT', '/api/v1/admin/providers', payload),
+	testProvider: (target: 'mistral' | 'deepgram' | 'analysis') =>
+		request<{ ok: boolean; message: string }>('POST', '/api/v1/admin/providers/test', { target }),
 
 	startRound: (roundId: string) => request<Round>('POST', `/api/v1/rounds/${roundId}/start`),
 	endRound: (roundId: string) => request<Round>('POST', `/api/v1/rounds/${roundId}/end`),

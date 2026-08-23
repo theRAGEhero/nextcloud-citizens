@@ -82,6 +82,24 @@ export interface MonitorTable {
 	} | null
 }
 
+export interface ProvidersSummary {
+	stt: {
+		provider: 'mistral' | 'deepgram'
+		live_enabled: boolean
+		batch_enabled: boolean
+		mistral_configured: boolean
+		mistral_key_hint: string
+		deepgram_configured: boolean
+		deepgram_key_hint: string
+	}
+	analysis: {
+		base_url: string
+		model: string
+		configured: boolean
+		key_hint: string
+	}
+}
+
 export interface RoundMonitor {
 	round_id: string
 	status: string
