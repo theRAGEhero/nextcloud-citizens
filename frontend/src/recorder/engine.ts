@@ -1,16 +1,26 @@
 /*
  * Recording engine: one MediaRecorder session, periodic chunks written to
- * IndexedDB FIRST, then uploaded asynchronously with acknowledgment tracking.
- * The network is never required to preserve audio (brief §17).
+ * IndexedDB FIRST, then uploaded asynchronously with acknowledgment tracking,
+ * exponential-backoff retry, heartbeats and crash recovery.
+ * The network is never required to preserve audio (brief §17–§20).
  */
 
 import { reactive } from 'vue'
 import { recorderApi } from './api'
-import { idb } from './idb'
+import { idb, type StoredRecording } from './idb'
+import { clientLog } from './logger'
 import { sha256Hex } from './sha'
 
-export const CHUNK_INTERVAL_MS = 10_000
-const UPLOAD_RETRY_MS = 3_000
+// ~10 s chunks by default (brief §17.2); overridable via ?chunkms= for tests
+export const CHUNK_INTERVAL_MS = (() => {
+	const override = Number(new URLSearchParams(window.location.search).get('chunkms'))
+	return Number.isFinite(override) && override >= 250 ? override : 10_000
+})()
+const RETRY_BASE_MS = 3_000
+const RETRY_MAX_MS = 60_000
+const HEARTBEAT_MS = 20_000
+const STORAGE_CHECK_MS = 60_000
+const LOW_STORAGE_MB = 100
 
 const MIME_CANDIDATES = [
 	'audio/webm;codecs=opus',
@@ -34,7 +44,9 @@ export interface EngineState {
 	localChunks: number
 	ackedChunks: number
 	storageError: boolean
+	lowStorage: boolean
 	uploadOnline: boolean
+	retryInMs: number
 	serverState: string
 	error: string
 }
@@ -47,7 +59,9 @@ export class RecorderEngine {
 		localChunks: 0,
 		ackedChunks: 0,
 		storageError: false,
+		lowStorage: false,
 		uploadOnline: true,
+		retryInMs: 0,
 		serverState: '',
 		error: '',
 	})
@@ -61,6 +75,15 @@ export class RecorderEngine {
 	private chunkPipeline: Promise<void> = Promise.resolve()
 	private uploaderActive = false
 	private stopRequested = false
+	private retryDelay = RETRY_BASE_MS
+	private wakeUploader: (() => void) | null = null
+	private heartbeatTimer = 0
+	private storageTimer = 0
+	private onlineListener = () => {
+		clientLog('info', 'network_online')
+		this.retryDelay = RETRY_BASE_MS
+		this.kickUploader()
+	}
 
 	async start(token: string, roundId: string): Promise<void> {
 		this.token = token
@@ -74,6 +97,7 @@ export class RecorderEngine {
 		this.state.recordingId = started.recording_id
 		this.state.startedAt = Date.now()
 		this.state.phase = 'recording'
+		clientLog('info', 'recording_started', { recordingId: started.recording_id, mimeType })
 
 		await idb.putRecording({
 			recordingId: started.recording_id,
@@ -91,11 +115,99 @@ export class RecorderEngine {
 			if (event.data && event.data.size > 0) this.enqueueChunk(event.data)
 		}
 		this.mediaRecorder.start(CHUNK_INTERVAL_MS)
+		this.startMonitors()
+		this.runUploader()
+	}
+
+	/** Resume synchronization of a recording found in IndexedDB after a
+	 * reload/crash. The microphone session is gone (a reload always stops
+	 * recording); every persisted chunk is recoverable (brief §20). */
+	async resumeSync(token: string, recordingMeta: StoredRecording): Promise<void> {
+		// plain copy: the caller may hand us a Vue reactive proxy, which
+		// IndexedDB's structured clone cannot serialize
+		const recording: StoredRecording = { ...recordingMeta }
+		this.token = token
+		this.state.recordingId = recording.recordingId
+		this.state.startedAt = recording.startedAt
+		const chunks = await idb.chunksFor(recording.recordingId)
+		this.seq = chunks.length === 0 ? 0 : Math.max(...chunks.map((c) => c.seq)) + 1
+		this.totalChunks = recording.totalChunks ?? this.seq
+		this.state.localChunks = chunks.length
+		this.state.ackedChunks = chunks.filter((c) => c.acked).length
+		this.state.phase = 'syncing'
+		clientLog('info', 'recovery_resume', {
+			recordingId: recording.recordingId,
+			chunks: chunks.length,
+			pending: chunks.length - this.state.ackedChunks,
+		})
+		if (recording.totalChunks === null) {
+			recording.totalChunks = this.totalChunks
+			recording.finishedAt = recording.finishedAt ?? Date.now()
+			await idb.putRecording(recording)
+		}
+		this.startMonitors()
 		this.runUploader()
 	}
 
 	get mediaStream(): MediaStream | null {
 		return this.stream
+	}
+
+	retryNow(): void {
+		this.retryDelay = RETRY_BASE_MS
+		this.kickUploader()
+	}
+
+	private kickUploader(): void {
+		if (this.wakeUploader) this.wakeUploader()
+		else this.runUploader()
+	}
+
+	private startMonitors(): void {
+		window.addEventListener('online', this.onlineListener)
+		this.heartbeatTimer = window.setInterval(() => void this.sendHeartbeat(), HEARTBEAT_MS)
+		this.storageTimer = window.setInterval(() => void this.checkStorage(), STORAGE_CHECK_MS)
+		void this.sendHeartbeat()
+	}
+
+	private stopMonitors(): void {
+		window.removeEventListener('online', this.onlineListener)
+		window.clearInterval(this.heartbeatTimer)
+		window.clearInterval(this.storageTimer)
+	}
+
+	private async sendHeartbeat(): Promise<void> {
+		try {
+			let freeMb: number | undefined
+			if (navigator.storage?.estimate) {
+				const { quota, usage } = await navigator.storage.estimate()
+				if (quota) freeMb = Math.round(((quota - (usage ?? 0)) / 1024 / 1024) * 10) / 10
+			}
+			await recorderApi.heartbeat(this.token, {
+				recording_id: this.state.recordingId || undefined,
+				recording_active: this.state.phase === 'recording',
+				local_chunks: this.state.localChunks,
+				acked_chunks: this.state.ackedChunks,
+				storage_ok: !this.state.storageError,
+				storage_free_mb: freeMb,
+			})
+		} catch {
+			/* offline — heartbeats resume when the network does */
+		}
+	}
+
+	private async checkStorage(): Promise<void> {
+		try {
+			if (!navigator.storage?.estimate) return
+			const { quota, usage } = await navigator.storage.estimate()
+			if (quota) {
+				const freeMb = (quota - (usage ?? 0)) / 1024 / 1024
+				this.state.lowStorage = freeMb < LOW_STORAGE_MB
+				if (this.state.lowStorage) clientLog('warn', 'storage_low', { freeMb: Math.round(freeMb) })
+			}
+		} catch {
+			/* estimate unavailable */
+		}
 	}
 
 	private enqueueChunk(blob: Blob): void {
@@ -117,11 +229,14 @@ export class RecorderEngine {
 					attempts: 0,
 				})
 				this.state.localChunks += 1
+				clientLog('info', 'chunk_saved_local', { seq, bytes: blob.size })
+				this.kickUploader()
 			})
 			.catch((error) => {
 				// Local persistence failure is the HIGHEST severity problem (brief §22)
 				this.state.storageError = true
 				this.state.error = `Local storage error: ${error}`
+				clientLog('error', 'chunk_save_failed', { seq, error: String(error).slice(0, 200) })
 			})
 	}
 
@@ -134,7 +249,7 @@ export class RecorderEngine {
 				if (pending.length === 0) {
 					if (this.totalChunks !== null) break // finished and everything acked
 					if (this.state.phase !== 'recording' && this.state.phase !== 'finishing') break
-					await sleep(1000)
+					await this.idleWait(1000)
 					continue
 				}
 				const chunk = pending[0]
@@ -147,11 +262,19 @@ export class RecorderEngine {
 					await idb.putChunk(chunk)
 					this.state.ackedChunks += 1
 					this.state.uploadOnline = true
+					this.state.retryInMs = 0
+					this.retryDelay = RETRY_BASE_MS
+					clientLog('info', 'chunk_acked', { seq: chunk.seq, attempts: chunk.attempts })
 				} catch (error) {
 					this.state.uploadOnline = false
 					chunk.attempts += 1
 					await idb.putChunk(chunk)
-					await sleep(UPLOAD_RETRY_MS)
+					clientLog('warn', 'chunk_upload_failed', {
+						seq: chunk.seq, attempts: chunk.attempts, error: String(error).slice(0, 160),
+					})
+					this.state.retryInMs = this.retryDelay
+					await this.idleWait(this.retryDelay)
+					this.retryDelay = Math.min(this.retryDelay * 2, RETRY_MAX_MS)
 				}
 			}
 			if (this.totalChunks !== null) await this.sendComplete()
@@ -160,10 +283,26 @@ export class RecorderEngine {
 		}
 	}
 
+	/** Sleep that a manual retry / online event can cut short. */
+	private idleWait(ms: number): Promise<void> {
+		return new Promise((resolve) => {
+			const timer = window.setTimeout(() => {
+				this.wakeUploader = null
+				resolve()
+			}, ms)
+			this.wakeUploader = () => {
+				window.clearTimeout(timer)
+				this.wakeUploader = null
+				resolve()
+			}
+		})
+	}
+
 	async finish(): Promise<void> {
 		if (!this.mediaRecorder || this.stopRequested) return
 		this.stopRequested = true
 		this.state.phase = 'finishing'
+		clientLog('info', 'finish_requested')
 
 		await new Promise<void>((resolve) => {
 			this.mediaRecorder!.onstop = () => resolve()
@@ -183,7 +322,7 @@ export class RecorderEngine {
 			meta.totalChunks = this.totalChunks
 			await idb.putRecording(meta)
 		}
-		this.runUploader()
+		this.kickUploader()
 	}
 
 	private async sendComplete(): Promise<void> {
@@ -196,6 +335,7 @@ export class RecorderEngine {
 			let result = await recorderApi.complete(this.token, this.state.recordingId, this.totalChunks)
 			// server-detected gaps: resend those chunks from local storage, then retry
 			while (result.missing_sequences.length > 0) {
+				clientLog('warn', 'server_missing_chunks', { missing: result.missing_sequences.length })
 				const chunks = await idb.chunksFor(this.state.recordingId)
 				for (const seqNumber of result.missing_sequences) {
 					const chunk = chunks.find((c) => c.seq === seqNumber)
@@ -210,6 +350,9 @@ export class RecorderEngine {
 		} catch (error) {
 			this.state.error = error instanceof Error ? error.message : String(error)
 			this.state.phase = 'failed'
+			clientLog('error', 'sync_failed', { error: this.state.error.slice(0, 200) })
+		} finally {
+			this.stopMonitors()
 		}
 	}
 
@@ -219,18 +362,42 @@ export class RecorderEngine {
 			this.state.serverState = status.state
 			if (status.state === 'AUDIO_READY' || status.state === 'AUDIO_INVALID') {
 				this.state.phase = status.state === 'AUDIO_READY' ? 'done' : 'failed'
-				if (status.state === 'AUDIO_INVALID') {
+				if (status.state === 'AUDIO_READY') {
+					clientLog('info', 'recording_synchronized', { recordingId: this.state.recordingId })
+					await this.markServerComplete()
+				} else {
 					this.state.error = `Server could not validate the audio (${status.error_code})`
+					clientLog('error', 'audio_invalid', { errorCode: status.error_code })
 				}
 				return
 			}
-			await sleep(2000)
+			await new Promise((resolve) => setTimeout(resolve, 2000))
 		}
-		// server still busy — audio is safe server-side; report as done-with-note
+		// server still busy — audio is fully uploaded and safe server-side
 		this.state.phase = 'done'
+		await this.markServerComplete()
+	}
+
+	private async markServerComplete(): Promise<void> {
+		const recordings = await idb.getRecordings()
+		const meta = recordings.find((r) => r.recordingId === this.state.recordingId)
+		if (meta) {
+			meta.serverComplete = true
+			await idb.putRecording(meta)
+		}
 	}
 }
 
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms))
+/** Explicit local cleanup of fully synchronized recordings (done screen). */
+export async function clearSynchronizedRecordings(): Promise<number> {
+	const recordings = await idb.getRecordings()
+	let cleared = 0
+	for (const recording of recordings) {
+		if (recording.serverComplete) {
+			await idb.deleteChunksFor(recording.recordingId)
+			await idb.deleteRecording(recording.recordingId)
+			cleared += 1
+		}
+	}
+	return cleared
 }

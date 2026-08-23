@@ -6,6 +6,7 @@ import type {
 	Participant,
 	Round,
 	RoundIn,
+	RoundMonitor,
 	Table,
 } from './types'
 
@@ -92,6 +93,15 @@ export const api = {
 			participant_id: participantId,
 			to_table_id: toTableId,
 		}),
+
+	startRound: (roundId: string) => request<Round>('POST', `/api/v1/rounds/${roundId}/start`),
+	endRound: (roundId: string) => request<Round>('POST', `/api/v1/rounds/${roundId}/end`),
+	roundMonitor: (roundId: string) => request<RoundMonitor>('GET', `/api/v1/rounds/${roundId}/monitor`),
+	deviceLogs: (assemblyId: string, tableNumber: number, tail = 200) =>
+		request<{ session_id: string | null; lines: string[] }>(
+			'GET',
+			`/api/v1/assemblies/${assemblyId}/tables/${tableNumber}/device-logs?tail=${tail}`,
+		),
 
 	listInvites: (assemblyId: string) =>
 		request<Invite[]>('GET', `/api/v1/assemblies/${assemblyId}/invites`),

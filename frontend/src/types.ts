@@ -58,3 +58,34 @@ export interface InviteGenerated {
 	url: string
 	qr_svg: string
 }
+
+export interface DeviceStatus {
+	recording_active?: boolean
+	local_chunks?: number
+	acked_chunks?: number
+	storage_ok?: boolean
+	storage_free_mb?: number
+}
+
+export interface MonitorTable {
+	table_id: string
+	number: number
+	device: { connected: boolean; seconds_since_contact: number | null; status: DeviceStatus }
+	local_recording_safe: boolean
+	recording: {
+		id: string
+		state: string
+		started_at: string | null
+		received_chunks: number
+		total_chunks: number | null
+		error_code: string
+	} | null
+}
+
+export interface RoundMonitor {
+	round_id: string
+	status: string
+	started_at: string | null
+	duration_minutes: number
+	tables: MonitorTable[]
+}

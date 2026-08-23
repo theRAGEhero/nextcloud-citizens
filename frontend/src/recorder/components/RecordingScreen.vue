@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { JoinResult, RoundInfo } from '../api'
-import { RecorderEngine } from '../engine'
+import { recorderApi, type JoinResult, type RoundInfo } from '../api'
+import { clearSynchronizedRecordings, RecorderEngine } from '../engine'
 
 const props = defineProps<{ session: JoinResult; round: RoundInfo }>()
 const emit = defineEmits<{ exit: [] }>()
@@ -12,9 +12,12 @@ const now = ref(Date.now())
 const confirmFinish = ref(false)
 const level = ref(0)
 const startError = ref('')
+const roundEnded = ref(false)
+const clearedNote = ref('')
 
 let clockTimer = 0
 let levelTimer = 0
+let roundPollTimer = 0
 let audioContext: AudioContext | null = null
 let wakeLock: WakeLockSentinel | null = null
 
@@ -57,6 +60,17 @@ onMounted(async () => {
 	} catch {
 		/* not supported — the UI warns to keep the page open */
 	}
+	// notice when the facilitator ends the round (brief §26)
+	roundPollTimer = window.setInterval(async () => {
+		if (state.phase !== 'recording') return
+		try {
+			const status = await recorderApi.status(props.session.session_token)
+			const current = status.rounds.find((r) => r.id === props.round.id)
+			if (current && current.status === 'ENDED') roundEnded.value = true
+		} catch {
+			/* offline — round state resumes with the network */
+		}
+	}, 10_000)
 })
 
 async function reacquireWakeLock(): Promise<void> {
@@ -72,6 +86,7 @@ async function reacquireWakeLock(): Promise<void> {
 onBeforeUnmount(() => {
 	window.clearInterval(clockTimer)
 	window.clearInterval(levelTimer)
+	window.clearInterval(roundPollTimer)
 	audioContext?.close()
 	wakeLock?.release().catch(() => undefined)
 	document.removeEventListener('visibilitychange', reacquireWakeLock)
@@ -79,7 +94,13 @@ onBeforeUnmount(() => {
 
 async function finishRecording(): Promise<void> {
 	confirmFinish.value = false
+	roundEnded.value = false
 	await engine.finish()
+}
+
+async function clearSynced(): Promise<void> {
+	const cleared = await clearSynchronizedRecordings()
+	clearedNote.value = `${cleared} synchronized recording(s) removed from this phone.`
 }
 </script>
 
@@ -130,8 +151,20 @@ async function finishRecording(): Promise<void> {
 			<div v-else-if="!state.uploadOnline" class="rc-note">
 				Network unavailable — the recording continues safely on this phone and will upload when
 				the connection returns. Keep this page open.
+				<button class="rc-btn" style="margin-top: 10px" @click="engine.retryNow()">Retry upload now</button>
 			</div>
 			<p v-else class="rc-muted rc-center">Keep this page open while the table is recording.</p>
+
+			<div v-if="state.lowStorage" class="rc-alert">
+				Phone storage is getting low. Notify the facilitator after this round.
+			</div>
+
+			<div v-if="roundEnded && state.phase === 'recording'" class="rc-note">
+				<strong>The round has ended.</strong> Finish recording?
+				<button class="rc-btn rc-primary" style="margin-top: 10px" @click="finishRecording">
+					Finish and synchronize
+				</button>
+			</div>
 
 			<template v-if="state.phase === 'recording'">
 				<button v-if="!confirmFinish" class="rc-btn" @click="confirmFinish = true">
@@ -167,7 +200,11 @@ async function finishRecording(): Promise<void> {
 				<p class="rc-muted" style="margin-top: 10px">
 					The table recording was uploaded and validated by the server.
 				</p>
+				<p v-if="clearedNote" class="rc-muted">{{ clearedNote }}</p>
 				<button class="rc-btn" style="margin-top: 24px" @click="emit('exit')">Back to start</button>
+				<button v-if="!clearedNote" class="rc-btn rc-subtle" @click="clearSynced">
+					Clear synchronized audio from this phone
+				</button>
 			</div>
 		</template>
 

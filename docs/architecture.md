@@ -67,6 +67,35 @@ The recorder UI (Milestone 2) will be a separate, dependency-light bundle
 served on PUBLIC routes — phones load it straight from
 `/exapps/citizens/recorder/...` with no Nextcloud chrome.
 
+## Recording pipeline (Milestones 2–3)
+
+```text
+PHONE (recorder SPA, PUBLIC routes)          SERVER
+MediaRecorder (~10 s timeslices)
+  └► IndexedDB FIRST (chunk + sha256)  ──►  POST chunks/{seq} (octet-stream,
+       └► uploader: sequential, exp.         X-Chunk-SHA256 verified,
+          backoff, online-event kick,        idempotent on rec+seq+hash)
+          manual retry                          └► AudioChunk row + file
+finish → complete(total)              ──►  gap check → resend missing → job
+                                            ASSEMBLE_AUDIO: concat → ffprobe
+                                            → ffmpeg remux → sha256 →
+                                            AUDIO_READY (state machine §24)
+heartbeat every 20 s                  ──►  recorder_sessions.last_status_*
+client log ring (IndexedDB)           ──►  logs/devices/<session>.jsonl
+```
+
+- Reload/crash recovery: on launch the recorder scans IndexedDB for
+  unfinished recordings and resumes synchronization (mic session itself
+  cannot survive a reload; every persisted chunk does).
+- SQLite concurrency: transactions run `BEGIN IMMEDIATE` (writers queue on
+  `busy_timeout` instead of failing on read→write lock upgrades) — required
+  for ~10 devices uploading simultaneously (§56 Test F).
+- Facilitator "Live" tab polls `/rounds/{id}/monitor`: device connectivity
+  (heartbeat age), chunk upload progress, and "local recording safe" only
+  when a recent heartbeat reports healthy storage.
+- Round start/end is organizer-controlled; recorders poll and prompt (no
+  remote mic activation).
+
 ## Dev workflow
 
 ```text

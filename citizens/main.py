@@ -96,7 +96,10 @@ def create_app(with_auth: bool = True) -> FastAPI:
     return app
 
 
-APP = create_app()
+_settings = get_settings()
+if _settings.citizens_insecure_no_auth:
+    log.warning("AUTH DISABLED (CITIZENS_INSECURE_NO_AUTH) — browser-test mode only")
+APP = create_app(with_auth=not _settings.citizens_insecure_no_auth)
 
 
 if __name__ == "__main__":

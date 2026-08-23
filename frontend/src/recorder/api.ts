@@ -111,4 +111,22 @@ export const recorderApi = {
 
 	recordingStatus: (token: string, recordingId: string) =>
 		request<RecordingStatus>('GET', `/api/v1/public/recorder/recordings/${recordingId}`, { token }),
+
+	heartbeat: (
+		token: string,
+		payload: {
+			recording_id?: string
+			recording_active: boolean
+			local_chunks: number
+			acked_chunks: number
+			storage_ok: boolean
+			storage_free_mb?: number
+		},
+	) => request<{ ok: boolean }>('POST', '/api/v1/public/recorder/heartbeat', { token, json: payload }),
+
+	shipLogs: (token: string, entries: unknown[]) =>
+		request<{ accepted: number }>('POST', '/api/v1/public/recorder/logs', {
+			token,
+			json: { entries },
+		}),
 }

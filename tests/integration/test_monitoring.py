@@ -1,0 +1,109 @@
+"""Round lifecycle, device heartbeats → facilitator monitor, client log shipping."""
+
+import re
+
+
+def _setup(client):
+    assembly = client.post(
+        "/api/v1/assemblies",
+        json={
+            "name": "TEST Monitor",
+            "default_table_count": 2,
+            "rounds": [
+                {"title": "R1", "question": "Q1", "duration_minutes": 30},
+                {"title": "R2", "question": "Q2", "duration_minutes": 30},
+            ],
+        },
+    ).json()
+    invites = client.post(f"/api/v1/assemblies/{assembly['id']}/invites/generate").json()
+    token = re.search(r"#/join/(.+)$", invites[0]["url"]).group(1)
+    joined = client.post(
+        "/api/v1/public/join", json={"token": token}, headers={"X-Forwarded-For": "10.2.2.2"}
+    ).json()
+    return assembly, {"Authorization": f"Bearer {joined['session_token']}"}
+
+
+def test_round_lifecycle(client):
+    assembly, _ = _setup(client)
+    round1, round2 = assembly["rounds"]
+
+    assert client.post(f"/api/v1/rounds/{round1['id']}/start").json()["status"] == "ACTIVE"
+    # only one active round at a time
+    assert client.post(f"/api/v1/rounds/{round2['id']}/start").status_code == 409
+    # cannot end a round that is not active
+    assert client.post(f"/api/v1/rounds/{round2['id']}/end").status_code == 409
+
+    assert client.post(f"/api/v1/rounds/{round1['id']}/end").json()["status"] == "ENDED"
+    assert client.post(f"/api/v1/rounds/{round2['id']}/start").json()["status"] == "ACTIVE"
+
+    # recorder sees round states via public status
+    detail = client.get(f"/api/v1/assemblies/{assembly['id']}").json()
+    assert [r["status"] for r in detail["rounds"]] == ["ENDED", "ACTIVE"]
+
+
+def test_heartbeat_feeds_monitor(client):
+    assembly, recorder_headers = _setup(client)
+    round1 = assembly["rounds"][0]
+
+    monitor = client.get(f"/api/v1/rounds/{round1['id']}/monitor").json()
+    table1 = next(t for t in monitor["tables"] if t["number"] == 1)
+    assert table1["device"]["connected"] is False
+    assert table1["local_recording_safe"] is False
+
+    heartbeat = client.post(
+        "/api/v1/public/recorder/heartbeat",
+        json={
+            "recording_active": True,
+            "local_chunks": 12,
+            "acked_chunks": 10,
+            "storage_ok": True,
+            "storage_free_mb": 512.5,
+        },
+        headers=recorder_headers,
+    )
+    assert heartbeat.status_code == 200
+
+    monitor = client.get(f"/api/v1/rounds/{round1['id']}/monitor").json()
+    table1 = next(t for t in monitor["tables"] if t["number"] == 1)
+    assert table1["device"]["connected"] is True
+    assert table1["device"]["status"]["local_chunks"] == 12
+    assert table1["local_recording_safe"] is True
+
+    # a device reporting storage failure is never claimed safe
+    client.post(
+        "/api/v1/public/recorder/heartbeat",
+        json={"recording_active": True, "storage_ok": False},
+        headers=recorder_headers,
+    )
+    monitor = client.get(f"/api/v1/rounds/{round1['id']}/monitor").json()
+    table1 = next(t for t in monitor["tables"] if t["number"] == 1)
+    assert table1["local_recording_safe"] is False
+
+
+def test_device_log_shipping(client, settings_env):
+    assembly, recorder_headers = _setup(client)
+
+    shipped = client.post(
+        "/api/v1/public/recorder/logs",
+        json={
+            "entries": [
+                {"ts": 1_700_000_000.0, "level": "info", "event": "chunk_saved", "data": {"seq": 0}},
+                {"ts": 1_700_000_010.0, "level": "warn", "event": "upload_failed"},
+            ]
+        },
+        headers=recorder_headers,
+    )
+    assert shipped.status_code == 200
+    assert shipped.json()["accepted"] == 2
+
+    logs = client.get(f"/api/v1/assemblies/{assembly['id']}/tables/1/device-logs").json()
+    assert logs["session_id"] is not None
+    assert len(logs["lines"]) == 2
+    assert "chunk_saved" in logs["lines"][0]
+
+    # other users cannot read device logs of an assembly they don't own
+    other = client.get(
+        f"/api/v1/assemblies/{assembly['id']}/tables/1/device-logs",
+        headers={"X-Test-User": "intruder"},
+    )
+    assert other.status_code == 404

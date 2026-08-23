@@ -43,3 +43,9 @@ def chunk_path(recording_directory: Path, sequence_number: int) -> Path:
 
 def assembled_dir(root: Path, assembly_id: str) -> Path:
     return root / "assembled" / assembly_id
+
+
+def device_log_path(root: Path, session_id: str) -> Path:
+    """Per-recorder-session shipped client logs (JSONL). session_id is a
+    server-generated UUID, never client input."""
+    return root / "logs" / "devices" / f"{session_id}.jsonl"

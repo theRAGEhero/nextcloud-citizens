@@ -3,15 +3,42 @@ import { onMounted, ref } from 'vue'
 import { recorderApi, type JoinResult, type RoundInfo } from './api'
 import Preflight from './components/Preflight.vue'
 import RecordingScreen from './components/RecordingScreen.vue'
+import RecoverySync from './components/RecoverySync.vue'
+import { idb, type StoredRecording } from './idb'
+import { initLogger } from './logger'
 
 const SESSION_KEY = 'citizens-recorder-session'
 
-type Screen = 'joining' | 'no-invite' | 'preflight' | 'ready' | 'recording' | 'error'
+type Screen = 'joining' | 'no-invite' | 'recovery' | 'preflight' | 'ready' | 'recording' | 'error'
 
 const screen = ref<Screen>('joining')
 const error = ref('')
 const session = ref<JoinResult | null>(null)
 const selectedRound = ref<RoundInfo | null>(null)
+const recoveryRecording = ref<StoredRecording | null>(null)
+
+async function enterWithSession(joined: JoinResult): Promise<void> {
+	session.value = joined
+	selectedRound.value = pickRound(joined.rounds)
+	initLogger(joined.session_token)
+	// reload/crash recovery: unsynchronized local recordings take priority (brief §20)
+	try {
+		const unfinished = await idb.unfinishedRecordings()
+		const candidate = unfinished.find((r) => r.totalChunks !== null || r.startedAt > 0)
+		if (candidate) {
+			const chunks = await idb.chunksFor(candidate.recordingId)
+			if (chunks.length > 0) {
+				recoveryRecording.value = candidate
+				screen.value = 'recovery'
+				return
+			}
+			await idb.deleteRecording(candidate.recordingId)
+		}
+	} catch {
+		/* recovery scan failure must not block a fresh session */
+	}
+	screen.value = 'preflight'
+}
 
 function pickRound(rounds: RoundInfo[]): RoundInfo | null {
 	return rounds.find((r) => r.status === 'ACTIVE') ?? rounds.find((r) => r.status === 'NOT_STARTED') ?? rounds[0] ?? null
@@ -26,9 +53,7 @@ onMounted(async () => {
 			sessionStore(joined)
 			// remove the invite secret from the visible URL (brief §14)
 			history.replaceState(null, '', window.location.pathname + window.location.search)
-			session.value = joined
-			selectedRound.value = pickRound(joined.rounds)
-			screen.value = 'preflight'
+			await enterWithSession(joined)
 			return
 		} catch (err) {
 			error.value = err instanceof Error ? err.message : String(err)
@@ -41,9 +66,7 @@ onMounted(async () => {
 	if (stored) {
 		try {
 			const status = await recorderApi.status(stored.session_token)
-			session.value = { ...stored, ...status }
-			selectedRound.value = pickRound(status.rounds)
-			screen.value = 'preflight'
+			await enterWithSession({ ...stored, ...status })
 			return
 		} catch {
 			sessionStorageClear()
@@ -100,6 +123,12 @@ function sessionStorageClear(): void {
 			<div class="rc-alert" style="text-align: left">{{ error }}</div>
 			<p class="rc-muted">The QR code may have been revoked. Ask the facilitator for a new one.</p>
 		</div>
+
+		<RecoverySync
+			v-else-if="screen === 'recovery' && session && recoveryRecording"
+			:session="session"
+			:recording="recoveryRecording"
+			@done="recoveryRecording = null; screen = 'preflight'" />
 
 		<Preflight
 			v-else-if="screen === 'preflight' && session"

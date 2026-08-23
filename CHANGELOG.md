@@ -4,6 +4,25 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Milestone 3 — 2026-08-23
+
+- Offline resilience: exponential-backoff upload retry with online-event
+  wake and manual retry; reload/crash recovery (IndexedDB scan → "Recovered
+  recording" → resume synchronization); storage monitoring with low-space and
+  write-failure alerts; explicit local cleanup of synchronized recordings.
+- Device heartbeats (20 s) + client log shipping to the server (offline-
+  tolerant, per-session JSONL); facilitator "Live" dashboard tab with round
+  start/end controls, per-table device/upload/local-safe status and device
+  log viewer.
+- Round lifecycle (start/end, single-active enforcement); recorder prompts
+  to finish when the facilitator ends the round.
+- SQLite `BEGIN IMMEDIATE` transactions — fixes "database is locked" under
+  concurrent device uploads.
+- Release-blocker tests all passing: §56 Test A (network loss) and Test C
+  (reload recovery) as Playwright browser tests with a fake microphone
+  (Firefox), Test D/E in pytest, Test F (10 concurrent devices) as a load
+  script. 31 backend tests total.
+
 ### Milestone 2 — 2026-08-23
 
 - Public recorder API: invite-token join → short-lived scoped recorder session

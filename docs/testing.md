@@ -17,8 +17,29 @@ Testing is part of implementation, not a final phase (brief §55).
 ## Running
 
 ```bash
-make test     # pytest via the repo .venv
+make test     # pytest + ruff inside the app container image
 make lint     # ruff
+```
+
+Browser tests (release-blocker offline scenarios, brief §56 A and C):
+
+```bash
+sh scripts/browser-test-env.sh start   # throwaway instance on 127.0.0.1:23100, no AppAPI auth
+cd frontend && npx playwright test     # Firefox with fake microphone streams
+sh ../scripts/browser-test-env.sh stop
+```
+
+Notes: Chromium 151's `--use-fake-device-for-media-capture` no longer provides
+a fake microphone on this host — the Playwright config uses **Firefox** with
+`media.navigator.streams.fake`. The recorder accepts `?chunkms=2000` to speed
+up chunking in tests.
+
+Test F (10 concurrent devices):
+
+```bash
+sh scripts/browser-test-env.sh start
+python3 tests/load/test_f_concurrent_devices.py   # prints PASS/FAIL
+sh scripts/browser-test-env.sh stop
 ```
 
 Provider tests that hit real APIs are opt-in only, gated on

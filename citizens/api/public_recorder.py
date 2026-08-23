@@ -4,16 +4,20 @@ A recorder session can only ever: read its assembly/round state, create
 recordings for its own table, upload chunks, and complete recordings.
 """
 
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from citizens.config import get_settings
 from citizens.db.models import Assembly, RecorderSession
+from citizens.db.models.base import utcnow
 from citizens.db.session import get_db
 from citizens.security.rate_limit import JOIN_LIMITER, client_ip
 from citizens.services import recording as rec_svc
+from citizens.storage.paths import device_log_path
 
 router = APIRouter(prefix="/public")
 
@@ -98,6 +102,51 @@ def complete(
 def recording_status(recording_id: str, recorder_session: RecorderSess, session: DB):
     recording = rec_svc.get_session_recording(session, recorder_session, recording_id)
     return rec_svc.recording_status(session, recording)
+
+
+class HeartbeatIn(BaseModel):
+    recording_id: str | None = None
+    recording_active: bool = False
+    local_chunks: int = Field(default=0, ge=0)
+    acked_chunks: int = Field(default=0, ge=0)
+    storage_ok: bool = True
+    storage_free_mb: float | None = None
+
+
+@router.post("/recorder/heartbeat")
+def heartbeat(data: HeartbeatIn, recorder_session: RecorderSess, session: DB):
+    recorder_session.last_status_json = data.model_dump_json()
+    recorder_session.last_status_at = utcnow()
+    return {"ok": True}
+
+
+class LogEntry(BaseModel):
+    ts: float
+    level: str = Field(max_length=10)
+    event: str = Field(max_length=120)
+    data: dict | None = None
+
+
+class LogsIn(BaseModel):
+    entries: list[LogEntry] = Field(max_length=200)
+
+
+MAX_DEVICE_LOG_BYTES = 5 * 1024 * 1024
+
+
+@router.post("/recorder/logs")
+def ship_logs(data: LogsIn, recorder_session: RecorderSess):
+    """Offline-tolerant client log shipping — the recorder's diagnostic trail
+    for devices nobody can attach devtools to."""
+    path = device_log_path(get_settings().app_persistent_storage, recorder_session.id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and path.stat().st_size > MAX_DEVICE_LOG_BYTES:
+        return {"accepted": 0, "truncated": True}
+    with path.open("a", encoding="utf-8") as handle:
+        for entry in data.entries:
+            line = json.dumps(entry.model_dump(exclude_none=True))[:2048]
+            handle.write(line + "\n")
+    return {"accepted": len(data.entries), "truncated": False}
 
 
 def _assembly_state(session: Session, recorder_session: RecorderSession) -> dict:

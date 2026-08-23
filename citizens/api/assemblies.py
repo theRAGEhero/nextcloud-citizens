@@ -11,6 +11,7 @@ from citizens.db.session import get_db
 from citizens.domain import schemas
 from citizens.security.identity import CurrentUser
 from citizens.services import assemblies as svc
+from citizens.services import rounds as rounds_svc
 from citizens.services.audit import record_audit_event
 
 router = APIRouter()
@@ -72,6 +73,28 @@ def update_round(round_id: str, data: schemas.RoundUpdate, user: CurrentUser, se
 def delete_round(round_id: str, user: CurrentUser, session: DB):
     round_ = svc.get_owned_round(session, round_id, user)
     svc.delete_round(session, round_)
+
+
+@router.post("/rounds/{round_id}/start", response_model=schemas.RoundOut)
+def start_round(round_id: str, user: CurrentUser, session: DB):
+    round_ = svc.get_owned_round(session, round_id, user)
+    rounds_svc.start_round(session, round_)
+    record_audit_event(session, "round_started", "round", round_.id, actor=user)
+    return round_
+
+
+@router.post("/rounds/{round_id}/end", response_model=schemas.RoundOut)
+def end_round(round_id: str, user: CurrentUser, session: DB):
+    round_ = svc.get_owned_round(session, round_id, user)
+    rounds_svc.end_round(session, round_)
+    record_audit_event(session, "round_ended", "round", round_.id, actor=user)
+    return round_
+
+
+@router.get("/rounds/{round_id}/monitor")
+def round_monitor(round_id: str, user: CurrentUser, session: DB):
+    round_ = svc.get_owned_round(session, round_id, user)
+    return rounds_svc.round_monitor(session, round_)
 
 
 @router.get("/assemblies/{assembly_id}/participants", response_model=list[schemas.ParticipantOut])

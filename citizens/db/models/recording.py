@@ -44,6 +44,9 @@ class RecorderSession(Base):
     expires_at: Mapped[datetime] = mapped_column(TZDateTime())
     last_seen_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     revoked_at: Mapped[datetime | None] = mapped_column(TZDateTime())
+    # latest device-reported health (heartbeat payload), for the live dashboard
+    last_status_json: Mapped[str] = mapped_column(Text, default="{}")
+    last_status_at: Mapped[datetime | None] = mapped_column(TZDateTime())
 
 
 class Recording(Base):

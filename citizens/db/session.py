@@ -27,17 +27,27 @@ def configure_database(db_url: str) -> Engine:
     _engine = create_engine(db_url, connect_args=connect_args)
     if db_url.startswith("sqlite"):
         event.listen(_engine, "connect", _set_sqlite_pragmas)
+        # BEGIN IMMEDIATE: take the write lock at transaction start so
+        # concurrent writers queue on busy_timeout instead of failing with
+        # "database is locked" on a read→write lock upgrade.
+        event.listen(_engine, "begin", _begin_immediate)
     _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
     return _engine
 
 
 def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
+    # let SQLAlchemy control transactions entirely (no driver-level auto-BEGIN)
+    dbapi_connection.isolation_level = None
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.execute("PRAGMA busy_timeout=10000")
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.close()
+
+
+def _begin_immediate(conn) -> None:
+    conn.exec_driver_sql("BEGIN IMMEDIATE")
 
 
 def get_engine() -> Engine:

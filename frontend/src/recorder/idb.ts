@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'citizens-recorder'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 export interface StoredRecording {
 	recordingId: string
@@ -43,6 +43,9 @@ function openDb(): Promise<IDBDatabase> {
 				if (!db.objectStoreNames.contains('chunks')) {
 					const store = db.createObjectStore('chunks', { keyPath: 'key' })
 					store.createIndex('byRecording', 'recordingId', { unique: false })
+				}
+				if (!db.objectStoreNames.contains('logs')) {
+					db.createObjectStore('logs', { autoIncrement: true })
 				}
 			}
 			request.onsuccess = () => resolve(request.result)
@@ -115,4 +118,49 @@ export const idb = {
 			await tx('chunks', 'readwrite', (store) => store.delete(chunk.key))
 		}
 	},
+
+	/** Recordings that were interrupted or not confirmed by the server. */
+	async unfinishedRecordings(): Promise<StoredRecording[]> {
+		const all = await this.getRecordings()
+		return all.filter((r) => r.recordingId !== '__selftest__' && !r.serverComplete)
+	},
+}
+
+interface LogRecord {
+	ts: number
+	level: string
+	event: string
+	data?: Record<string, unknown>
+}
+
+export const logsDb = {
+	append: (entry: LogRecord) => tx('logs', 'readwrite', (store) => store.add(entry)),
+
+	take(limit: number): Promise<{ entries: LogRecord[]; lastKey: number }> {
+		return openDb().then(
+			(db) =>
+				new Promise((resolve, reject) => {
+					const store = db.transaction('logs', 'readonly').objectStore('logs')
+					const entries: LogRecord[] = []
+					let lastKey = -1
+					const request = store.openCursor()
+					request.onsuccess = () => {
+						const cursor = request.result
+						if (cursor && entries.length < limit) {
+							entries.push(cursor.value as LogRecord)
+							lastKey = cursor.key as number
+							cursor.continue()
+						} else {
+							resolve({ entries, lastKey })
+						}
+					}
+					request.onerror = () => reject(request.error ?? new Error('log read failed'))
+				}),
+		)
+	},
+
+	deleteUpTo: (lastKey: number) =>
+		tx('logs', 'readwrite', (store) =>
+			store.delete(IDBKeyRange.upperBound(lastKey)),
+		),
 }

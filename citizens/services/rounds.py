@@ -1,0 +1,108 @@
+"""Round lifecycle + live table monitoring for the facilitator dashboard."""
+
+import json
+
+from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from citizens.db.models import RecorderSession, Recording, Round
+from citizens.db.models.base import utcnow
+from citizens.logging_setup import get_logger
+
+log = get_logger(__name__)
+
+STALE_HEARTBEAT_SECONDS = 45
+
+
+def start_round(session: Session, round_: Round) -> Round:
+    if round_.status not in ("NOT_STARTED", "ENDED"):
+        raise HTTPException(status_code=409, detail=f"Round is {round_.status}")
+    other_active = [
+        r for r in round_.assembly.rounds if r.status == "ACTIVE" and r.id != round_.id
+    ]
+    if other_active:
+        raise HTTPException(status_code=409, detail="Another round is already active")
+    round_.status = "ACTIVE"
+    round_.started_at = round_.started_at or utcnow()
+    if round_.assembly.status in ("DRAFT", "READY"):
+        round_.assembly.status = "ACTIVE"
+    session.flush()
+    log.info("round_started", round_id=round_.id, assembly_id=round_.assembly_id)
+    return round_
+
+
+def end_round(session: Session, round_: Round) -> Round:
+    if round_.status != "ACTIVE":
+        raise HTTPException(status_code=409, detail=f"Round is {round_.status}")
+    round_.status = "ENDED"
+    round_.ended_at = utcnow()
+    session.flush()
+    log.info("round_ended", round_id=round_.id, assembly_id=round_.assembly_id)
+    return round_
+
+
+def round_monitor(session: Session, round_: Round) -> dict:
+    """Per-table live health, combining device heartbeats with recording rows.
+
+    'Local recording safe' is only claimed from a RECENT device-reported
+    heartbeat with storage_ok (brief §25).
+    """
+    now = utcnow()
+    tables = []
+    for table in round_.tables:
+        recording = session.execute(
+            select(Recording)
+            .where(Recording.round_id == round_.id, Recording.table_id == table.id)
+            .order_by(Recording.created_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        recorder_session = session.execute(
+            select(RecorderSession)
+            .where(
+                RecorderSession.assembly_id == round_.assembly_id,
+                RecorderSession.table_number == table.number,
+                RecorderSession.revoked_at.is_(None),
+            )
+            .order_by(RecorderSession.created_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        device: dict = {"connected": False, "seconds_since_contact": None, "status": {}}
+        if recorder_session is not None and recorder_session.last_status_at is not None:
+            age = (now - recorder_session.last_status_at).total_seconds()
+            device = {
+                "connected": age < STALE_HEARTBEAT_SECONDS,
+                "seconds_since_contact": int(age),
+                "status": json.loads(recorder_session.last_status_json or "{}"),
+            }
+        local_safe = bool(
+            device["connected"] and device["status"].get("storage_ok") is True
+        )
+
+        tables.append(
+            {
+                "table_id": table.id,
+                "number": table.number,
+                "device": device,
+                "local_recording_safe": local_safe,
+                "recording": None
+                if recording is None
+                else {
+                    "id": recording.id,
+                    "state": recording.state,
+                    "started_at": recording.started_at,
+                    "received_chunks": recording.received_chunks,
+                    "total_chunks": recording.total_chunks,
+                    "error_code": recording.error_code,
+                },
+            }
+        )
+    return {
+        "round_id": round_.id,
+        "status": round_.status,
+        "started_at": round_.started_at,
+        "duration_minutes": round_.duration_minutes,
+        "tables": tables,
+    }

@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # Citizens-specific
     citizens_log_level: str = "INFO"
     citizens_dev: bool = False
+    # ONLY for local browser tests: disables AppAPI signature auth entirely.
+    # Never set on an instance reachable by anyone else.
+    citizens_insecure_no_auth: bool = False
 
 
 @lru_cache

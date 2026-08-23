@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { api } from '../api'
 import type { AssemblyDetail } from '../types'
+import MonitorTab from './MonitorTab.vue'
 import ParticipantsTab from './ParticipantsTab.vue'
 import QrTab from './QrTab.vue'
 import RoundsTab from './RoundsTab.vue'
@@ -12,7 +13,7 @@ const emit = defineEmits<{ back: [] }>()
 
 const assembly = ref<AssemblyDetail | null>(null)
 const error = ref('')
-const tab = ref<'rounds' | 'participants' | 'tables' | 'qr'>('rounds')
+const tab = ref<'rounds' | 'participants' | 'tables' | 'qr' | 'monitor'>('rounds')
 
 async function reload(): Promise<void> {
 	try {
@@ -47,12 +48,14 @@ onMounted(reload)
 				<button class="cz-tab" :class="{ 'cz-active': tab === 'participants' }" @click="tab = 'participants'">Participants</button>
 				<button class="cz-tab" :class="{ 'cz-active': tab === 'tables' }" @click="tab = 'tables'">Tables</button>
 				<button class="cz-tab" :class="{ 'cz-active': tab === 'qr' }" @click="tab = 'qr'">QR codes</button>
+				<button class="cz-tab" :class="{ 'cz-active': tab === 'monitor' }" @click="tab = 'monitor'">Live</button>
 			</div>
 
 			<RoundsTab v-if="tab === 'rounds'" :assembly="assembly" @changed="reload" />
 			<ParticipantsTab v-else-if="tab === 'participants'" :assembly-id="assembly.id" @changed="reload" />
 			<TablesTab v-else-if="tab === 'tables'" :assembly="assembly" />
-			<QrTab v-else :assembly-id="assembly.id" />
+			<QrTab v-else-if="tab === 'qr'" :assembly-id="assembly.id" />
+			<MonitorTab v-else :assembly="assembly" @changed="reload" />
 		</template>
 	</div>
 </template>
