@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { mdiChevronDown, mdiChevronUp, mdiDeleteOutline, mdiPlus } from '@mdi/js'
 import { ref } from 'vue'
 import { api } from '../api'
 import type { RoundIn } from '../types'
+import CzButton from './ui/CzButton.vue'
 
 const emit = defineEmits<{ cancel: []; created: [id: string] }>()
 
@@ -14,9 +16,7 @@ const description = ref('')
 const language = ref('en')
 const expectedParticipants = ref(50)
 const tableCount = ref(10)
-const rounds = ref<RoundIn[]>([
-	{ title: 'Round 1', question: '', duration_minutes: 30 },
-])
+const rounds = ref<RoundIn[]>([{ title: 'Round 1', question: '', duration_minutes: 30 }])
 
 function addRound(): void {
 	rounds.value.push({
@@ -59,21 +59,36 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-	<div>
+	<div class="cz-page" style="max-width: 720px">
 		<h2>Create assembly</h2>
-		<p class="cz-muted">Step {{ step }} of 2 — {{ step === 1 ? 'Basics' : 'Rounds' }}</p>
+		<div class="cz-row" style="margin: 14px 0 20px; gap: 0">
+			<div
+				v-for="(label, index) in ['Basics', 'Rounds']"
+				:key="label"
+				class="cz-row"
+				style="gap: 8px; flex-wrap: nowrap">
+				<span
+					class="cz-posbadge"
+					:style="step === index + 1 ? '' : 'background: var(--cz-bg-dark); color: var(--cz-text-muted)'">
+					{{ index + 1 }}
+				</span>
+				<strong :class="{ 'cz-muted': step !== index + 1 }">{{ label }}</strong>
+				<span v-if="index === 0" style="width: 48px; height: 2px; background: var(--cz-border); margin: 0 12px"></span>
+			</div>
+		</div>
+
 		<div v-if="error" class="cz-error">{{ error }}</div>
 
 		<div v-if="step === 1" class="cz-card">
 			<div class="cz-field">
-				<label>Name</label>
+				<label>Assembly name</label>
 				<input v-model="name" type="text" placeholder="Bologna Mobility Assembly" />
 			</div>
 			<div class="cz-field">
-				<label>Description</label>
+				<label>Description (optional)</label>
 				<textarea v-model="description" rows="2"></textarea>
 			</div>
-			<div class="cz-row">
+			<div class="cz-fieldgrid">
 				<div class="cz-field">
 					<label>Language</label>
 					<select v-model="language">
@@ -93,44 +108,50 @@ async function submit(): Promise<void> {
 					<input v-model.number="tableCount" type="number" min="0" max="200" />
 				</div>
 			</div>
-			<div class="cz-row">
-				<button class="cz-btn" @click="emit('cancel')">Cancel</button>
-				<button class="cz-btn cz-primary" :disabled="!name.trim()" @click="step = 2">Continue</button>
+			<div class="cz-row" style="justify-content: flex-end; margin-top: 8px">
+				<CzButton variant="tertiary" @click="emit('cancel')">Cancel</CzButton>
+				<CzButton variant="primary" :disabled="!name.trim()" @click="step = 2">Continue</CzButton>
 			</div>
 		</div>
 
-		<div v-else>
+		<template v-else>
 			<div v-for="(round, index) in rounds" :key="index" class="cz-card">
-				<div class="cz-row cz-spread">
-					<strong>Round {{ index + 1 }}</strong>
-					<div class="cz-row">
-						<button class="cz-btn cz-small" :disabled="index === 0" @click="moveRound(index, -1)">↑</button>
-						<button class="cz-btn cz-small" :disabled="index === rounds.length - 1" @click="moveRound(index, 1)">↓</button>
-						<button class="cz-btn cz-small cz-danger" :disabled="rounds.length === 1" @click="removeRound(index)">Delete</button>
+				<div class="cz-row cz-row--spread" style="margin-bottom: 10px">
+					<div class="cz-row" style="flex-wrap: nowrap">
+						<span class="cz-posbadge">{{ index + 1 }}</span>
+						<strong>Round {{ index + 1 }}</strong>
+					</div>
+					<div class="cz-row" style="flex-wrap: nowrap">
+						<CzButton small variant="tertiary" :icon="mdiChevronUp" :disabled="index === 0" @click="moveRound(index, -1)" />
+						<CzButton small variant="tertiary" :icon="mdiChevronDown" :disabled="index === rounds.length - 1" @click="moveRound(index, 1)" />
+						<CzButton small variant="tertiary" :icon="mdiDeleteOutline" :disabled="rounds.length === 1" @click="removeRound(index)" />
 					</div>
 				</div>
-				<div class="cz-field">
-					<label>Title</label>
-					<input v-model="round.title" type="text" />
+				<div class="cz-fieldgrid">
+					<div class="cz-field">
+						<label>Title</label>
+						<input v-model="round.title" type="text" />
+					</div>
+					<div class="cz-field" style="max-width: 180px">
+						<label>Duration (minutes)</label>
+						<input v-model.number="round.duration_minutes" type="number" min="1" max="600" />
+					</div>
 				</div>
-				<div class="cz-field">
+				<div class="cz-field" style="margin-bottom: 0">
 					<label>Question / prompt</label>
-					<textarea v-model="round.question" rows="2" placeholder="What mobility problems do people experience?"></textarea>
-				</div>
-				<div class="cz-field" style="max-width: 180px">
-					<label>Duration (minutes)</label>
-					<input v-model.number="round.duration_minutes" type="number" min="1" max="600" />
+					<textarea
+						v-model="round.question"
+						rows="2"
+						placeholder="What mobility problems do people experience?"></textarea>
 				</div>
 			</div>
-			<div class="cz-row">
-				<button class="cz-btn" @click="addRound">+ Add round</button>
-			</div>
-			<div class="cz-row" style="margin-top: 18px">
-				<button class="cz-btn" @click="step = 1">Back</button>
-				<button class="cz-btn cz-primary" :disabled="saving" @click="submit">
+			<CzButton :icon="mdiPlus" @click="addRound">Add round</CzButton>
+			<div class="cz-row" style="justify-content: flex-end; margin-top: 20px">
+				<CzButton variant="tertiary" @click="step = 1">Back</CzButton>
+				<CzButton variant="primary" :disabled="saving" @click="submit">
 					{{ saving ? 'Creating…' : 'Create assembly' }}
-				</button>
+				</CzButton>
 			</div>
-		</div>
+		</template>
 	</div>
 </template>

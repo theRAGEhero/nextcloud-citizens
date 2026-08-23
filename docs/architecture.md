@@ -53,6 +53,20 @@ Grows alongside the code; currently covers Milestone 0.
 | `citizens/api/system.py` | `/api/v1/health` |
 | `js/citizens-main.js` | Milestone 0 shell injected into AppAPI's embedded top-menu page (`<div id="content">`); replaced by the Vue organizer SPA in Milestone 1 |
 
+## UI design system
+
+The organizer SPA follows Nextcloud's native app-shell pattern: a 300 px
+app-navigation sidebar (assembly list with status dots, "+ New assembly",
+admin-only Settings pinned at the bottom) beside a scrollable content pane
+(assembly header + icon tabs: Overview, Rounds, Participants, Tables, QR
+codes, Live). On ≤768 px the sidebar becomes an overlay drawer. Shared atoms
+live in `frontend/src/components/ui/` (SvgIcon via `@mdi/js`, CzButton,
+CzStatusPill, CzEmptyState, CzSkeleton, CzConfirm for destructive actions,
+CzToast). All styles are ID-scoped tokens over NC CSS variables (see the
+"hard-won facts" above for why), adapting automatically to NC's dark theme.
+The recorder keeps its own dark glanceable design (hero table number, pulsing
+record ring, iconized checklist, caption bubbles).
+
 ## UI delivery model
 
 The organizer UI is not an iframe: `enabled_handler` registers a top-menu

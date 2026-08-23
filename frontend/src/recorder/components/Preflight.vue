@@ -1,5 +1,18 @@
 <script setup lang="ts">
+import {
+	mdiAlert,
+	mdiCheckCircle,
+	mdiCloseCircle,
+	mdiDatabaseOutline,
+	mdiHarddisk,
+	mdiMicrophoneOutline,
+	mdiPlay,
+	mdiRecordCircleOutline,
+	mdiServerNetwork,
+	mdiWaveform,
+} from '@mdi/js'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import SvgIcon from '../../components/ui/SvgIcon.vue'
 import { recorderApi, type JoinResult } from '../api'
 import { pickMimeType } from '../engine'
 import { idb } from '../idb'
@@ -31,7 +44,6 @@ function set(check: string, state: CheckState, note = ''): void {
 }
 
 onMounted(async () => {
-	// microphone + level meter
 	try {
 		stream = await navigator.mediaDevices.getUserMedia({ audio: true })
 		set('microphone', 'ok')
@@ -51,12 +63,10 @@ onMounted(async () => {
 		set('microphone', 'fail', 'Microphone access denied or unavailable')
 	}
 
-	// MediaRecorder support
 	const mime = pickMimeType()
 	if (mime) set('recorder', 'ok', mime.split(';')[0])
 	else set('recorder', 'fail', 'No supported recording format')
 
-	// IndexedDB write test + storage estimate
 	try {
 		await idb.selfTest()
 		let note = ''
@@ -69,7 +79,6 @@ onMounted(async () => {
 		set('storage', 'fail', 'Cannot write to local storage')
 	}
 
-	// persistent storage (best effort)
 	try {
 		if (navigator.storage?.persist) {
 			const persisted = await navigator.storage.persist()
@@ -81,7 +90,6 @@ onMounted(async () => {
 		set('persistent', 'warn', 'Could not request persistence')
 	}
 
-	// server connectivity
 	try {
 		await recorderApi.status(props.session.session_token)
 		set('server', 'ok')
@@ -106,8 +114,6 @@ function recordTest(): void {
 	testRecorder = new MediaRecorder(stream, { mimeType: mime })
 	testRecorder.ondataavailable = (event) => blobs.push(event.data)
 	testRecorder.onstop = async () => {
-		// Decode via WebAudio: blob: URLs in an <audio> element are blocked by
-		// the Nextcloud proxy's CSP (media-src 'self'); decodeAudioData is not.
 		try {
 			const data = await new Blob(blobs, { type: mime }).arrayBuffer()
 			if (!audioContext) audioContext = new AudioContext()
@@ -132,24 +138,25 @@ function playTest(): void {
 	testSource.start()
 }
 
-// Only microphone or local-storage failure blocks recording (brief §15)
 function canProceed(): boolean {
 	return checks.value.microphone.state === 'ok' &&
 		checks.value.recorder.state === 'ok' &&
 		checks.value.storage.state === 'ok'
 }
 
-const LABELS: Record<string, string> = {
-	microphone: 'Microphone',
-	recorder: 'Audio recording',
-	storage: 'Local storage',
-	persistent: 'Persistent storage',
-	server: 'Server connection',
-}
+const ROWS: Array<{ key: string; label: string; icon: string }> = [
+	{ key: 'microphone', label: 'Microphone', icon: mdiMicrophoneOutline },
+	{ key: 'recorder', label: 'Audio recording', icon: mdiRecordCircleOutline },
+	{ key: 'storage', label: 'Local storage', icon: mdiDatabaseOutline },
+	{ key: 'persistent', label: 'Persistent storage', icon: mdiHarddisk },
+	{ key: 'server', label: 'Server connection', icon: mdiServerNetwork },
+]
 
-const ICONS: Record<CheckState, string> = { pending: '…', ok: '✓', warn: '⚠', fail: '✕' }
-const CLASSES: Record<CheckState, string> = {
-	pending: 'rc-muted', ok: 'rc-ok', warn: 'rc-warn', fail: 'rc-bad',
+const STATE_ICON: Record<CheckState, string> = {
+	pending: '', ok: mdiCheckCircle, warn: mdiAlert, fail: mdiCloseCircle,
+}
+const STATE_CLASS: Record<CheckState, string> = {
+	pending: 'rc-pending', ok: 'rc-ok', warn: 'rc-warn', fail: 'rc-bad',
 }
 </script>
 
@@ -158,23 +165,33 @@ const CLASSES: Record<CheckState, string> = {
 		<div class="rc-header">
 			<span class="rc-table-badge">TABLE {{ session.table_number }}</span>
 		</div>
+
 		<div class="rc-card">
 			<h2>Microphone test</h2>
-			<div v-for="(check, key) in checks" :key="key" class="rc-status-row">
-				<span>
-					{{ LABELS[key] }}
-					<span v-if="check.note" class="rc-muted" style="font-size: 12px"> — {{ check.note }}</span>
+			<div v-for="row in ROWS" :key="row.key" class="rc-status-row">
+				<span class="rc-status-row__label">
+					<SvgIcon :path="row.icon" :size="19" style="color: var(--rc-muted)" />
+					<span>
+						{{ row.label }}
+						<span v-if="checks[row.key].note" class="rc-status-row__note">{{ checks[row.key].note }}</span>
+					</span>
 				</span>
-				<span :class="CLASSES[check.state]">{{ ICONS[check.state] }}</span>
+				<span :class="STATE_CLASS[checks[row.key].state]">
+					<span v-if="checks[row.key].state === 'pending'" class="rc-spin"></span>
+					<SvgIcon v-else :path="STATE_ICON[checks[row.key].state]" :size="20" />
+				</span>
 			</div>
 
-			<p class="rc-muted" style="margin: 14px 0 4px">Audio level — speak at the table</p>
+			<p class="rc-eyebrow" style="margin-top: 16px">
+				<SvgIcon :path="mdiWaveform" :size="14" /> Audio level — speak at the table
+			</p>
 			<div class="rc-level"><div class="rc-level-fill" :style="{ width: level + '%' }"></div></div>
 
 			<button
 				class="rc-btn"
 				:disabled="testState === 'recording' || checks.microphone.state !== 'ok'"
 				@click="recordTest">
+				<SvgIcon :path="mdiRecordCircleOutline" :size="20" />
 				{{ testState === 'recording' ? 'Recording 5 seconds…' : 'Record 5-second test' }}
 			</button>
 			<button
@@ -182,7 +199,8 @@ const CLASSES: Record<CheckState, string> = {
 				class="rc-btn"
 				:disabled="testState === 'playing'"
 				@click="playTest">
-				▶ Listen to the test
+				<SvgIcon :path="mdiPlay" :size="20" />
+				Listen to the test
 			</button>
 		</div>
 

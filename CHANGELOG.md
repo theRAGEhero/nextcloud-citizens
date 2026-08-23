@@ -4,6 +4,27 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### UI/UX design round — 2026-08-23
+
+- Organizer rebuilt around Nextcloud's native app-shell: sidebar navigation
+  (assembly list with status dots, admin Settings), content pane with
+  assembly header, icon tabs and a new Overview tab (stat cards + state-aware
+  "next step" guidance). Design system in `frontend/src/components/ui/`:
+  MDI icons, buttons, status pills, empty states, skeleton loaders,
+  confirmation modals for destructive actions, toasts. Full dark-theme and
+  mobile support; conversation-style transcript view; countdown bar with
+  progress in the Live tab; refined printable QR sheet.
+- Recorder redesigned: hero table number, pulsing record ring around the
+  timer, iconized pre-flight checklist and status rows, caption bubbles,
+  animated success state.
+- Fixed a real M4 regression the screenshot audit caught: the phone's
+  completion poll only accepted AUDIO_READY and hung when auto-transcription
+  advanced the state within seconds — it now accepts every post-validation
+  state.
+- Verified: screenshot audit (light/dark, desktop/mobile, all screens),
+  Playwright offline tests A & C, 47 backend tests, typecheck clean.
+  Organizer bundle +13 KB gzip, recorder +3 KB.
+
 ### Milestone 4 — 2026-08-23 (STT: batch + live)
 
 - Batch transcription pipeline: after audio validation, recordings are

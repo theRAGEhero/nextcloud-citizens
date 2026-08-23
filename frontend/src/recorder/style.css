@@ -1,41 +1,77 @@
-/* Recorder UI: dark, high-contrast, large controls — a phone in a noisy room. */
+/* Recorder UI: dark, high-contrast, glanceable — a phone lying on a table in
+ * a noisy room. Ships through the NC proxy under our own CSP; everything is
+ * bundled, no external assets. */
+
+#recorder-app {
+	--rc-bg: #17181c;
+	--rc-surface: #23252c;
+	--rc-surface-2: #2c2f38;
+	--rc-text: #f0f1f3;
+	--rc-muted: #9aa0ab;
+	--rc-border: #363a45;
+	--rc-red: #ef5350;
+	--rc-green: #66d17c;
+	--rc-amber: #ffb84d;
+	--rc-blue: #64a9e0;
+	--rc-radius: 14px;
+}
 
 html,
 body {
 	margin: 0;
-	background: #1b1b1b;
-	color: #eee;
-	font-family: system-ui, -apple-system, sans-serif;
+	background: #17181c;
+	color: #f0f1f3;
+	font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 #recorder-app {
 	max-width: 480px;
 	margin: 0 auto;
-	padding: 20px 18px 40px;
+	padding: 18px 18px 44px;
 	min-height: 100vh;
 	box-sizing: border-box;
+	background: var(--rc-bg);
+	color: var(--rc-text);
 }
+
+#recorder-app *, #recorder-app *::before, #recorder-app *::after { box-sizing: border-box; }
+
+#recorder-app h1 { font-size: 22px; margin: 0; font-weight: 700; }
+#recorder-app h2 { font-size: 17px; margin: 0 0 12px; font-weight: 650; }
+
+.rc-muted { color: var(--rc-muted); }
+
+/* ---------- header ---------- */
 
 .rc-header {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 	margin-bottom: 16px;
+	min-height: 34px;
 }
 
 .rc-table-badge {
-	font-size: 22px;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 15px;
 	font-weight: 800;
-	letter-spacing: 0.5px;
+	letter-spacing: 0.06em;
+	background: var(--rc-surface);
+	border: 1px solid var(--rc-border);
+	padding: 7px 14px;
+	border-radius: 999px;
 }
 
 .rc-live {
-	color: #ff5252;
-	font-weight: 700;
-	font-size: 14px;
+	color: var(--rc-red);
+	font-weight: 800;
+	font-size: 13.5px;
+	letter-spacing: 0.08em;
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: 7px;
 }
 
 .rc-live::before {
@@ -43,17 +79,18 @@ body {
 	width: 10px;
 	height: 10px;
 	border-radius: 50%;
-	background: #ff5252;
-	animation: rc-pulse 1.6s infinite;
+	background: var(--rc-red);
+	animation: rc-pulse 1.5s ease infinite;
 }
 
-@keyframes rc-pulse {
-	50% { opacity: 0.3; }
-}
+@keyframes rc-pulse { 50% { opacity: 0.25; } }
+
+/* ---------- cards ---------- */
 
 .rc-card {
-	background: #262626;
-	border-radius: 14px;
+	background: var(--rc-surface);
+	border: 1px solid var(--rc-border);
+	border-radius: var(--rc-radius);
 	padding: 18px;
 	margin-bottom: 14px;
 }
@@ -62,94 +99,231 @@ body {
 	font-size: 18px;
 	line-height: 1.45;
 	margin: 6px 0 0;
+	font-weight: 550;
 }
 
-.rc-muted {
-	color: #999;
-	font-size: 14px;
+/* ---------- timer with recording ring ---------- */
+
+.rc-timer-wrap {
+	display: flex;
+	justify-content: center;
+	margin: 18px 0 14px;
+}
+
+.rc-timer-ring {
+	width: 190px;
+	height: 190px;
+	border-radius: 50%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	border: 3px solid var(--rc-border);
+	position: relative;
+}
+
+.rc-timer-ring--live {
+	border-color: var(--rc-red);
+	animation: rc-ring 2s ease infinite;
+}
+
+@keyframes rc-ring {
+	0%, 100% { box-shadow: 0 0 0 0 rgba(239, 83, 80, 0.35); }
+	50% { box-shadow: 0 0 0 14px rgba(239, 83, 80, 0); }
 }
 
 .rc-timer {
-	font-size: 52px;
+	font-size: 46px;
 	font-weight: 800;
-	text-align: center;
 	font-variant-numeric: tabular-nums;
-	margin: 8px 0;
+	line-height: 1;
 }
+
+.rc-timer-label {
+	font-size: 11.5px;
+	letter-spacing: 0.14em;
+	color: var(--rc-muted);
+	margin-top: 6px;
+	text-transform: uppercase;
+}
+
+/* ---------- status rows ---------- */
 
 .rc-status-row {
 	display: flex;
 	justify-content: space-between;
-	padding: 7px 0;
-	border-bottom: 1px solid #333;
+	align-items: center;
+	gap: 10px;
+	padding: 9px 0;
+	border-bottom: 1px solid var(--rc-border);
 	font-size: 15px;
 }
 
-.rc-status-row:last-child {
-	border-bottom: none;
+.rc-status-row:last-child { border-bottom: none; }
+
+.rc-status-row__label { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.rc-status-row__note { font-size: 12px; color: var(--rc-muted); display: block; }
+
+.rc-ok { color: var(--rc-green); font-weight: 700; }
+.rc-warn { color: var(--rc-amber); font-weight: 700; }
+.rc-bad { color: var(--rc-red); font-weight: 700; }
+.rc-pending { color: var(--rc-muted); }
+
+.rc-spin {
+	display: inline-block;
+	width: 15px;
+	height: 15px;
+	border: 2px solid var(--rc-border);
+	border-top-color: var(--rc-blue);
+	border-radius: 50%;
+	animation: rc-spin 0.8s linear infinite;
 }
 
-.rc-ok { color: #6fdc8c; font-weight: 700; }
-.rc-warn { color: #ffb84d; font-weight: 700; }
-.rc-bad { color: #ff5252; font-weight: 700; }
+@keyframes rc-spin { to { transform: rotate(360deg); } }
+
+/* ---------- buttons ---------- */
 
 .rc-btn {
-	display: block;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 9px;
 	width: 100%;
-	padding: 16px;
-	font-size: 18px;
+	padding: 15px;
+	font-size: 17px;
 	font-weight: 700;
 	border: none;
-	border-radius: 12px;
-	background: #3a3a3a;
-	color: #eee;
+	border-radius: 13px;
+	background: var(--rc-surface-2);
+	color: var(--rc-text);
 	cursor: pointer;
 	margin-top: 10px;
+	transition: filter 0.12s ease;
 }
 
+.rc-btn:active:not(:disabled) { filter: brightness(1.15); }
 .rc-btn:disabled { opacity: 0.45; }
 .rc-btn.rc-primary { background: #1976d2; color: #fff; }
 .rc-btn.rc-record { background: #c62828; color: #fff; }
-.rc-btn.rc-subtle { background: transparent; color: #999; font-size: 15px; padding: 10px; }
+.rc-btn.rc-subtle { background: transparent; color: var(--rc-muted); font-size: 14.5px; padding: 10px; }
+
+/* ---------- level meter ---------- */
 
 .rc-level {
-	height: 14px;
-	border-radius: 7px;
-	background: #333;
+	height: 16px;
+	border-radius: 8px;
+	background: var(--rc-surface-2);
 	overflow: hidden;
 	margin: 12px 0;
+	border: 1px solid var(--rc-border);
 }
 
 .rc-level-fill {
 	height: 100%;
-	background: linear-gradient(90deg, #43a047, #ffb300 75%, #e53935);
+	background: linear-gradient(90deg, #43a047, #9ccc65 55%, #ffb300 78%, #e53935);
 	transition: width 90ms linear;
+	border-radius: 8px;
 }
 
+/* ---------- alerts / notes ---------- */
+
 .rc-alert {
-	background: #4a1414;
-	border: 1px solid #ff5252;
-	color: #ffbaba;
+	background: #3a1a1a;
+	border: 1px solid var(--rc-red);
+	color: #ffc9c7;
 	border-radius: 12px;
 	padding: 14px;
 	margin: 12px 0;
 	font-size: 15px;
-	line-height: 1.4;
+	line-height: 1.45;
 }
 
 .rc-note {
-	background: #14304a;
-	border: 1px solid #4d9fe0;
+	background: #17293a;
+	border: 1px solid #3d6f9e;
 	color: #bcd9f5;
 	border-radius: 12px;
 	padding: 12px 14px;
 	margin: 12px 0;
 	font-size: 14px;
+	line-height: 1.45;
 }
+
+/* ---------- hero states / captions ---------- */
 
 .rc-center { text-align: center; }
 
-.rc-big-icon { font-size: 56px; margin: 16px 0; }
+.rc-hero { padding-top: 34px; text-align: center; }
 
-h1 { font-size: 22px; margin: 0; }
-h2 { font-size: 18px; margin: 0 0 10px; }
+.rc-hero__icon {
+	width: 96px;
+	height: 96px;
+	margin: 0 auto 18px;
+	border-radius: 50%;
+	background: var(--rc-surface);
+	border: 1px solid var(--rc-border);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.rc-hero__icon--ok {
+	color: var(--rc-green);
+	border-color: var(--rc-green);
+	animation: rc-pop 0.35s ease;
+}
+
+@keyframes rc-pop {
+	0% { transform: scale(0.6); opacity: 0; }
+	70% { transform: scale(1.08); }
+	100% { transform: scale(1); opacity: 1; }
+}
+
+.rc-hero__table {
+	font-size: 52px;
+	font-weight: 900;
+	letter-spacing: 0.02em;
+	line-height: 1;
+	margin: 6px 0 2px;
+}
+
+.rc-captions { max-height: 220px; overflow-y: auto; }
+
+.rc-caption {
+	background: var(--rc-surface-2);
+	border-radius: 12px;
+	padding: 9px 13px;
+	margin: 7px 0;
+	font-size: 15px;
+	line-height: 1.4;
+	animation: cz-caption-in 0.2s ease;
+}
+
+@keyframes cz-caption-in {
+	from { opacity: 0; transform: translateY(5px); }
+	to { opacity: 1; transform: none; }
+}
+
+.rc-eyebrow {
+	font-size: 11px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--rc-muted);
+	margin: 0 0 8px;
+	font-weight: 700;
+}
+
+/* ---------- compact heights (landscape phones) ---------- */
+
+@media (max-height: 560px) {
+	.rc-timer-ring { width: 130px; height: 130px; }
+	.rc-timer { font-size: 32px; }
+	.rc-hero { padding-top: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#recorder-app *, #recorder-app *::before, #recorder-app *::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}

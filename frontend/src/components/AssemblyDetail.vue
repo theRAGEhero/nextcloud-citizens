@@ -1,61 +1,125 @@
 <script setup lang="ts">
+import {
+	mdiAccountGroup,
+	mdiDeleteOutline,
+	mdiMonitorEye,
+	mdiQrcode,
+	mdiTableFurniture,
+	mdiTimelineClockOutline,
+	mdiViewDashboardOutline,
+} from '@mdi/js'
 import { onMounted, ref } from 'vue'
 import { api } from '../api'
 import type { AssemblyDetail } from '../types'
-import MonitorTab from './MonitorTab.vue'
+import OverviewTab from './OverviewTab.vue'
 import ParticipantsTab from './ParticipantsTab.vue'
 import QrTab from './QrTab.vue'
 import RoundsTab from './RoundsTab.vue'
 import TablesTab from './TablesTab.vue'
+import MonitorTab from './MonitorTab.vue'
+import CzButton from './ui/CzButton.vue'
+import CzConfirm from './ui/CzConfirm.vue'
+import CzSkeleton from './ui/CzSkeleton.vue'
+import CzStatusPill from './ui/CzStatusPill.vue'
+import SvgIcon from './ui/SvgIcon.vue'
+import { toast } from './ui/toast'
 
 const props = defineProps<{ assemblyId: string }>()
-const emit = defineEmits<{ back: [] }>()
+const emit = defineEmits<{ changed: []; deleted: [] }>()
+
+type Tab = 'overview' | 'rounds' | 'participants' | 'tables' | 'qr' | 'monitor'
 
 const assembly = ref<AssemblyDetail | null>(null)
 const error = ref('')
-const tab = ref<'rounds' | 'participants' | 'tables' | 'qr' | 'monitor'>('rounds')
+const tab = ref<Tab>('overview')
+const confirmDelete = ref(false)
+
+const TABS: Array<{ id: Tab; label: string; icon: string }> = [
+	{ id: 'overview', label: 'Overview', icon: mdiViewDashboardOutline },
+	{ id: 'rounds', label: 'Rounds', icon: mdiTimelineClockOutline },
+	{ id: 'participants', label: 'Participants', icon: mdiAccountGroup },
+	{ id: 'tables', label: 'Tables', icon: mdiTableFurniture },
+	{ id: 'qr', label: 'QR codes', icon: mdiQrcode },
+	{ id: 'monitor', label: 'Live', icon: mdiMonitorEye },
+]
 
 async function reload(): Promise<void> {
 	try {
 		assembly.value = await api.getAssembly(props.assemblyId)
+		emit('changed')
 	} catch (err) {
 		error.value = err instanceof Error ? err.message : String(err)
 	}
 }
 
 onMounted(reload)
+
+async function deleteAssembly(): Promise<void> {
+	confirmDelete.value = false
+	try {
+		await api.deleteAssembly(props.assemblyId)
+		toast('Assembly deleted')
+		emit('deleted')
+	} catch (err) {
+		error.value = err instanceof Error ? err.message : String(err)
+	}
+}
 </script>
 
 <template>
-	<div>
-		<button class="cz-btn cz-small" @click="emit('back')">← Assemblies</button>
+	<div class="cz-page">
 		<div v-if="error" class="cz-error">{{ error }}</div>
+		<CzSkeleton v-if="!assembly && !error" :rows="4" :height="64" />
+
 		<template v-if="assembly">
-			<div class="cz-row cz-spread" style="margin-top: 14px">
-				<div>
-					<h2>{{ assembly.name }}</h2>
-					<p class="cz-muted">
+			<div class="cz-pagehead">
+				<div style="min-width: 0">
+					<h2 style="overflow-wrap: anywhere">{{ assembly.name }}</h2>
+					<p class="cz-muted" style="margin: 4px 0 0">
 						{{ assembly.participant_count }} / {{ assembly.expected_participants }} participants ·
-						{{ assembly.default_table_count }} tables ·
-						{{ assembly.rounds.length }} rounds
+						{{ assembly.default_table_count }} tables · {{ assembly.rounds.length }} rounds ·
+						{{ assembly.language.toUpperCase() }}
 					</p>
 				</div>
-				<span class="cz-chip">{{ assembly.status }}</span>
+				<div class="cz-row" style="flex-wrap: nowrap">
+					<CzStatusPill :status="assembly.status" />
+					<CzButton
+						variant="tertiary"
+						small
+						:icon="mdiDeleteOutline"
+						title="Delete assembly"
+						@click="confirmDelete = true" />
+				</div>
 			</div>
 
-			<div class="cz-tabs">
-				<button class="cz-tab" :class="{ 'cz-active': tab === 'rounds' }" @click="tab = 'rounds'">Rounds</button>
-				<button class="cz-tab" :class="{ 'cz-active': tab === 'participants' }" @click="tab = 'participants'">Participants</button>
-				<button class="cz-tab" :class="{ 'cz-active': tab === 'tables' }" @click="tab = 'tables'">Tables</button>
-				<button class="cz-tab" :class="{ 'cz-active': tab === 'qr' }" @click="tab = 'qr'">QR codes</button>
-				<button class="cz-tab" :class="{ 'cz-active': tab === 'monitor' }" @click="tab = 'monitor'">Live</button>
+			<div class="cz-tabs" role="tablist">
+				<button
+					v-for="item in TABS"
+					:key="item.id"
+					class="cz-tab"
+					:class="{ 'cz-tab--active': tab === item.id }"
+					role="tab"
+					:aria-selected="tab === item.id"
+					@click="tab = item.id">
+					<SvgIcon :path="item.icon" :size="17" />
+					{{ item.label }}
+				</button>
 			</div>
 
-			<RoundsTab v-if="tab === 'rounds'" :assembly="assembly" @changed="reload" />
+			<OverviewTab v-if="tab === 'overview'" :assembly="assembly" @navigate="(t: Tab) => (tab = t)" />
+			<RoundsTab v-else-if="tab === 'rounds'" :assembly="assembly" @changed="reload" />
 			<ParticipantsTab v-else-if="tab === 'participants'" :assembly-id="assembly.id" @changed="reload" />
 			<TablesTab v-else-if="tab === 'tables'" :assembly="assembly" />
-			<QrTab v-else-if="tab === 'qr'" :assembly-id="assembly.id" />
+			<QrTab v-else-if="tab === 'qr'" :assembly="assembly" />
 			<MonitorTab v-else :assembly="assembly" @changed="reload" />
 		</template>
+
+		<CzConfirm
+			v-if="confirmDelete && assembly"
+			title="Delete assembly?"
+			:message="`“${assembly.name}” and all of its rounds, recordings and transcripts will be permanently deleted.`"
+			confirm-label="Delete assembly"
+			@confirm="deleteAssembly"
+			@cancel="confirmDelete = false" />
 	</div>
 </template>

@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { mdiAlertCircleOutline, mdiQrcodeScan, mdiRecordCircleOutline } from '@mdi/js'
 import { onMounted, ref } from 'vue'
+import SvgIcon from '../components/ui/SvgIcon.vue'
 import { recorderApi, type JoinResult, type RoundInfo } from './api'
 import Preflight from './components/Preflight.vue'
 import RecordingScreen from './components/RecordingScreen.vue'
@@ -103,13 +105,13 @@ function sessionStorageClear(): void {
 
 <template>
 	<div>
-		<div v-if="screen === 'joining'" class="rc-center" style="padding-top: 80px">
-			<div class="rc-big-icon">⏳</div>
+		<div v-if="screen === 'joining'" class="rc-hero" style="padding-top: 90px">
+			<div class="rc-hero__icon"><span class="rc-spin" style="width: 30px; height: 30px"></span></div>
 			<p class="rc-muted">Connecting to the assembly…</p>
 		</div>
 
-		<div v-else-if="screen === 'no-invite'" class="rc-center" style="padding-top: 60px">
-			<div class="rc-big-icon">📷</div>
+		<div v-else-if="screen === 'no-invite'" class="rc-hero" style="padding-top: 70px">
+			<div class="rc-hero__icon"><SvgIcon :path="mdiQrcodeScan" :size="44" style="color: var(--rc-blue)" /></div>
 			<h1>Table Recorder</h1>
 			<p class="rc-muted" style="margin-top: 14px">
 				Open this page by scanning your table's QR code.<br />
@@ -117,8 +119,8 @@ function sessionStorageClear(): void {
 			</p>
 		</div>
 
-		<div v-else-if="screen === 'error'" class="rc-center" style="padding-top: 60px">
-			<div class="rc-big-icon">⚠️</div>
+		<div v-else-if="screen === 'error'" class="rc-hero" style="padding-top: 70px">
+			<div class="rc-hero__icon"><SvgIcon :path="mdiAlertCircleOutline" :size="44" style="color: var(--rc-red)" /></div>
 			<h1>Cannot join</h1>
 			<div class="rc-alert" style="text-align: left">{{ error }}</div>
 			<p class="rc-muted">The QR code may have been revoked. Ask the facilitator for a new one.</p>
@@ -136,20 +138,20 @@ function sessionStorageClear(): void {
 			@ready="screen = 'ready'" />
 
 		<div v-else-if="screen === 'ready' && session">
-			<div class="rc-header">
-				<span class="rc-table-badge">TABLE {{ session.table_number }}</span>
+			<div class="rc-hero" style="padding-top: 16px; padding-bottom: 8px">
+				<p class="rc-eyebrow">{{ session.assembly.name }}</p>
+				<div class="rc-hero__table">TABLE {{ session.table_number }}</div>
 			</div>
 			<div class="rc-card">
-				<h2>{{ session.assembly.name }}</h2>
 				<template v-if="selectedRound">
-					<p class="rc-muted">
+					<p class="rc-eyebrow" style="margin-bottom: 4px">
 						Round {{ selectedRound.position }} of {{ session.rounds.length }} ·
 						{{ selectedRound.duration_minutes }} minutes
 					</p>
-					<p class="rc-question">{{ selectedRound.question || selectedRound.title }}</p>
-					<div v-if="session.rounds.length > 1" style="margin-top: 12px">
+					<p class="rc-question" style="margin: 0">{{ selectedRound.question || selectedRound.title }}</p>
+					<div v-if="session.rounds.length > 1" style="margin-top: 14px">
 						<select
-							style="width: 100%; padding: 10px; border-radius: 8px; background: #333; color: #eee; border: 1px solid #444"
+							style="width: 100%; padding: 11px; border-radius: 10px; background: var(--rc-surface-2); color: var(--rc-text); border: 1px solid var(--rc-border); font-size: 15px"
 							:value="selectedRound.id"
 							@change="selectedRound = session.rounds.find((r) => r.id === ($event.target as HTMLSelectElement).value) ?? selectedRound">
 							<option v-for="round in session.rounds" :key="round.id" :value="round.id">
@@ -164,7 +166,8 @@ function sessionStorageClear(): void {
 				class="rc-btn rc-record"
 				:disabled="!selectedRound"
 				@click="screen = 'recording'">
-				● Start recording
+				<SvgIcon :path="mdiRecordCircleOutline" :size="22" />
+				Start recording
 			</button>
 			<button class="rc-btn rc-subtle" @click="screen = 'preflight'">Back to microphone test</button>
 		</div>

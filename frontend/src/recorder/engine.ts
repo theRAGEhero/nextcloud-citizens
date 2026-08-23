@@ -357,12 +357,18 @@ export class RecorderEngine {
 	}
 
 	private async pollUntilProcessed(): Promise<void> {
+		// anything at or past AUDIO_READY means the audio is validated and safe
+		// (auto-transcription can move the state onward within seconds)
+		const SUCCESS = new Set([
+			'AUDIO_READY', 'TRANSCRIBING', 'TRANSCRIBED', 'TRANSCRIPTION_FAILED',
+			'ANALYZING', 'READY_FOR_REVIEW', 'REVIEWED', 'ANALYSIS_FAILED',
+		])
 		for (let i = 0; i < 120; i += 1) {
 			const status = await recorderApi.recordingStatus(this.token, this.state.recordingId)
 			this.state.serverState = status.state
-			if (status.state === 'AUDIO_READY' || status.state === 'AUDIO_INVALID') {
-				this.state.phase = status.state === 'AUDIO_READY' ? 'done' : 'failed'
-				if (status.state === 'AUDIO_READY') {
+			if (SUCCESS.has(status.state) || status.state === 'AUDIO_INVALID') {
+				this.state.phase = SUCCESS.has(status.state) ? 'done' : 'failed'
+				if (SUCCESS.has(status.state)) {
 					clientLog('info', 'recording_synchronized', { recordingId: this.state.recordingId })
 					await this.markServerComplete()
 				} else {

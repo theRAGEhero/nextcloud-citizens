@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import {
+	mdiBroadcast,
+	mdiCheckCircle,
+	mdiCloudUploadOutline,
+	mdiDatabaseOutline,
+	mdiTrayFull,
+} from '@mdi/js'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import SvgIcon from '../../components/ui/SvgIcon.vue'
 import { recorderApi, type JoinResult, type RoundInfo } from '../api'
 import { clearSynchronizedRecordings, RecorderEngine } from '../engine'
 
@@ -17,6 +25,7 @@ const clearedNote = ref('')
 const showLive = ref(false)
 const liveLines = ref<Array<{ t: number; text: string }>>([])
 const liveChecked = ref(false)
+const captionsBox = ref<HTMLElement | null>(null)
 
 let clockTimer = 0
 let levelTimer = 0
@@ -34,6 +43,12 @@ const elapsed = computed(() => {
 
 const pendingChunks = computed(() => state.localChunks - state.ackedChunks)
 
+watch(liveLines, () => {
+	void nextTick(() => {
+		captionsBox.value?.scrollTo({ top: captionsBox.value.scrollHeight })
+	})
+})
+
 onMounted(async () => {
 	clockTimer = window.setInterval(() => (now.value = Date.now()), 500)
 	try {
@@ -42,7 +57,6 @@ onMounted(async () => {
 		startError.value = error instanceof Error ? error.message : String(error)
 		return
 	}
-	// level meter on the recording stream
 	const stream = engine.mediaStream
 	if (stream) {
 		audioContext = new AudioContext()
@@ -57,14 +71,12 @@ onMounted(async () => {
 			level.value = Math.min(100, Math.round((peak / 128) * 160))
 		}, 120)
 	}
-	// keep the screen on where supported (brief §21)
 	try {
 		wakeLock = (await navigator.wakeLock?.request('screen')) ?? null
 		document.addEventListener('visibilitychange', reacquireWakeLock)
 	} catch {
 		/* not supported — the UI warns to keep the page open */
 	}
-	// notice when the facilitator ends the round (brief §26)
 	roundPollTimer = window.setInterval(async () => {
 		if (state.phase !== 'recording') return
 		try {
@@ -87,6 +99,16 @@ async function reacquireWakeLock(): Promise<void> {
 	}
 }
 
+onBeforeUnmount(() => {
+	window.clearInterval(clockTimer)
+	window.clearInterval(levelTimer)
+	window.clearInterval(roundPollTimer)
+	window.clearInterval(livePollTimer)
+	audioContext?.close()
+	wakeLock?.release().catch(() => undefined)
+	document.removeEventListener('visibilitychange', reacquireWakeLock)
+})
+
 function toggleLive(): void {
 	showLive.value = !showLive.value
 	if (showLive.value && !livePollTimer) {
@@ -104,16 +126,6 @@ function toggleLive(): void {
 		livePollTimer = window.setInterval(() => void poll(), 6000)
 	}
 }
-
-onBeforeUnmount(() => {
-	window.clearInterval(clockTimer)
-	window.clearInterval(levelTimer)
-	window.clearInterval(roundPollTimer)
-	window.clearInterval(livePollTimer)
-	audioContext?.close()
-	wakeLock?.release().catch(() => undefined)
-	document.removeEventListener('visibilitychange', reacquireWakeLock)
-})
 
 async function finishRecording(): Promise<void> {
 	confirmFinish.value = false
@@ -140,29 +152,44 @@ async function clearSynced(): Promise<void> {
 		</div>
 
 		<template v-else-if="state.phase === 'recording' || state.phase === 'finishing'">
-			<div class="rc-card">
-				<p class="rc-muted">Round {{ round.position }} of {{ session.rounds.length }}</p>
-				<p class="rc-question">{{ round.question || round.title }}</p>
+			<div class="rc-card" style="padding: 14px 18px">
+				<p class="rc-eyebrow" style="margin: 0 0 4px">Round {{ round.position }} of {{ session.rounds.length }}</p>
+				<p class="rc-question" style="margin: 0">{{ round.question || round.title }}</p>
 			</div>
 
-			<div class="rc-timer">{{ elapsed }}</div>
+			<div class="rc-timer-wrap">
+				<div class="rc-timer-ring" :class="{ 'rc-timer-ring--live': state.phase === 'recording' }">
+					<span class="rc-timer">{{ elapsed }}</span>
+					<span class="rc-timer-label">{{ state.phase === 'recording' ? 'recording' : 'stopping…' }}</span>
+				</div>
+			</div>
+
 			<div class="rc-level"><div class="rc-level-fill" :style="{ width: level + '%' }"></div></div>
 
-			<div class="rc-card">
+			<div class="rc-card" style="padding: 8px 18px">
 				<div class="rc-status-row">
-					<span>Local audio</span>
+					<span class="rc-status-row__label">
+						<SvgIcon :path="mdiDatabaseOutline" :size="19" style="color: var(--rc-muted)" />
+						Local audio
+					</span>
 					<span :class="state.storageError ? 'rc-bad' : 'rc-ok'">
 						{{ state.storageError ? '✕ STORAGE ERROR' : '✓ SAFE' }}
 					</span>
 				</div>
 				<div class="rc-status-row">
-					<span>Server upload</span>
+					<span class="rc-status-row__label">
+						<SvgIcon :path="mdiCloudUploadOutline" :size="19" style="color: var(--rc-muted)" />
+						Server upload
+					</span>
 					<span :class="state.uploadOnline ? 'rc-ok' : 'rc-warn'">
 						{{ state.uploadOnline ? '✓' : 'OFFLINE' }}
 					</span>
 				</div>
 				<div class="rc-status-row">
-					<span>Pending upload</span>
+					<span class="rc-status-row__label">
+						<SvgIcon :path="mdiTrayFull" :size="19" style="color: var(--rc-muted)" />
+						Pending upload
+					</span>
 					<span :class="pendingChunks > 3 ? 'rc-warn' : ''">{{ pendingChunks }} chunks</span>
 				</div>
 			</div>
@@ -176,7 +203,9 @@ async function clearSynced(): Promise<void> {
 				the connection returns. Keep this page open.
 				<button class="rc-btn" style="margin-top: 10px" @click="engine.retryNow()">Retry upload now</button>
 			</div>
-			<p v-else class="rc-muted rc-center">Keep this page open while the table is recording.</p>
+			<p v-else class="rc-muted rc-center" style="font-size: 13.5px">
+				Keep this page open while the table is recording.
+			</p>
 
 			<div v-if="state.lowStorage" class="rc-alert">
 				Phone storage is getting low. Notify the facilitator after this round.
@@ -191,18 +220,17 @@ async function clearSynced(): Promise<void> {
 
 			<template v-if="state.phase === 'recording'">
 				<button class="rc-btn rc-subtle" @click="toggleLive">
+					<SvgIcon :path="mdiBroadcast" :size="18" />
 					{{ showLive ? 'Hide live transcript' : 'Show live transcript' }}
 				</button>
 				<div v-if="showLive" class="rc-card">
-					<p class="rc-muted" style="margin: 0 0 8px; font-size: 12px; letter-spacing: 0.05em">
-						LIVE TRANSCRIPT — PROVISIONAL
-					</p>
-					<p v-if="liveLines.length === 0" class="rc-muted" style="font-size: 14px">
+					<p class="rc-eyebrow">Live transcript — provisional</p>
+					<p v-if="liveLines.length === 0" class="rc-muted" style="font-size: 14px; margin: 0">
 						{{ liveChecked ? 'Live captions temporarily unavailable. Recording continues safely.' : 'Waiting for captions…' }}
 					</p>
-					<p v-for="(line, index) in liveLines" :key="index" style="font-size: 15px; margin: 6px 0">
-						{{ line.text }}
-					</p>
+					<div v-else ref="captionsBox" class="rc-captions">
+						<p v-for="(line, index) in liveLines" :key="index" class="rc-caption">{{ line.text }}</p>
+					</div>
 				</div>
 
 				<button v-if="!confirmFinish" class="rc-btn" @click="confirmFinish = true">
@@ -214,15 +242,15 @@ async function clearSynced(): Promise<void> {
 					<button class="rc-btn rc-subtle" @click="confirmFinish = false">Keep recording</button>
 				</template>
 			</template>
-			<p v-else class="rc-muted rc-center">Stopping…</p>
 		</template>
 
 		<template v-else-if="state.phase === 'syncing'">
-			<div class="rc-center" style="padding-top: 40px">
-				<div class="rc-big-icon">📤</div>
+			<div class="rc-hero">
+				<div class="rc-hero__icon"><SvgIcon :path="mdiCloudUploadOutline" :size="44" style="color: var(--rc-blue)" /></div>
 				<h1>Synchronizing</h1>
-				<p class="rc-muted" style="margin-top: 10px">
-					{{ state.ackedChunks }} / {{ state.localChunks }} chunks uploaded
+				<p class="rc-muted" style="margin-top: 10px; font-size: 16px">
+					<span style="font-variant-numeric: tabular-nums">{{ state.ackedChunks }} / {{ state.localChunks }}</span>
+					chunks uploaded
 					<template v-if="state.serverState"><br />Server: {{ state.serverState }}</template>
 				</p>
 				<div v-if="!state.uploadOnline" class="rc-note" style="text-align: left">
@@ -232,8 +260,8 @@ async function clearSynced(): Promise<void> {
 		</template>
 
 		<template v-else-if="state.phase === 'done'">
-			<div class="rc-center" style="padding-top: 40px">
-				<div class="rc-big-icon">✅</div>
+			<div class="rc-hero">
+				<div class="rc-hero__icon rc-hero__icon--ok"><SvgIcon :path="mdiCheckCircle" :size="52" /></div>
 				<h1>Recording synchronized</h1>
 				<p class="rc-muted" style="margin-top: 10px">
 					The table recording was uploaded and validated by the server.
