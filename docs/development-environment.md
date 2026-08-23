@@ -8,7 +8,7 @@ data loss is not.** Citizens must never touch Nextcloud user files.
 
 | Item | Value |
 |---|---|
-| Version | 32.0.0.13 (`nextcloud:32-apache` image) — meets Citizens' ≥ 32 minimum, no upgrade needed |
+| Version | **34.0.3.2** (`nextcloud:34-apache`; upgraded 32→33→34 on 2026-08-23, backups + rollback in `/root/backups/nextcloud-upgrade-20260823/`) |
 | Container | `nextcloud`, published on `127.0.0.1`-reachable `0.0.0.0:8081->80` |
 | Database | `nextcloud-db` (postgres:15), db `nextcloud`, user `oc_admin` |
 | Cache | `nextcloud-redis` (redis:7-alpine) |
@@ -20,10 +20,11 @@ data loss is not.** Citizens must never touch Nextcloud user files.
 
 ## AppAPI
 
-- `app_api` v32.0.0 installed and enabled.
-- **No deploy daemons registered, no ExApps registered** (clean slate as of 2026-08-23).
-- Development path per plan: `manual-install` daemon; Citizens container joins
-  `nextcloud_nextcloud-network`; Nextcloud PHP-proxies `/exapps/citizens/*`.
+- `app_api` v34.0.0 installed and enabled (auto-updated with the server upgrade).
+- `manual_install` deploy daemon registered (host = `nc_app_citizens`); the
+  Citizens ExApp is registered and enabled, its container joins
+  `nextcloud_nextcloud-network`, and Nextcloud PHP-proxies
+  `/index.php/apps/app_api/proxy/citizens/*` to it.
 
 ## HTTPS / reverse proxy
 

@@ -4,6 +4,29 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Fix round + platform upgrade — 2026-08-23
+
+- **Recorder CSP fix**: the page moved to `/recorder.html` and ships its own
+  Content-Security-Policy — Nextcloud's proxy applies `default-src 'none'`
+  (no script allowance) to proxied ExApp pages and only an ExApp-provided CSP
+  header survives. Mic-test playback via WebAudio (blob: media is blocked).
+  Old `/recorder/` QR links require regeneration (proxy follows redirects
+  internally). Live join → record → synchronize verified in a headless
+  browser against the production URL.
+- **QR codes** render with a viewBox (no more clipping); printable sheet kept.
+- **Organizer layout**: opaque Nextcloud-style app surface, ID-scoped styles
+  (NC core `button:not()` chains override plain classes), underline tabs,
+  fixed accessible danger red, full-width surface, recorder asset cache
+  busting via app version.
+- **Admin Speech & AI settings**: sensitive AppConfig key storage (hint-only
+  responses), STT provider choice, live/final toggles, OpenAI-compatible
+  analysis endpoint (Ollama-ready), connection tests, audit trail. 37 tests.
+- **Nextcloud upgraded 32.0.0 → 33.0.8 → 34.0.3** (user-approved): per-hop
+  DB dumps + code-volume backup + rollback doc in
+  `/root/backups/nextcloud-upgrade-20260823/`; app_api auto-updated to 34.0.0;
+  Citizens ExApp registration survived both hops; full live recording
+  round-trip re-verified on 34.
+
 ### Milestone 3 — 2026-08-23
 
 - Offline resilience: exponential-backoff upload retry with online-event
