@@ -8,6 +8,8 @@ from citizens.db.models.assembly import (
 )
 from citizens.db.models.audit import AuditEvent
 from citizens.db.models.base import Base
+from citizens.db.models.jobs import AppJob
+from citizens.db.models.recording import AudioChunk, RecorderSession, Recording
 
 __all__ = [
     "Base",
@@ -18,4 +20,8 @@ __all__ = [
     "Participant",
     "TableAssignment",
     "RecorderInvite",
+    "RecorderSession",
+    "Recording",
+    "AudioChunk",
+    "AppJob",
 ]

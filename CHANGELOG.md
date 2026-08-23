@@ -4,6 +4,27 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Milestone 2 — 2026-08-23
+
+- Public recorder API: invite-token join → short-lived scoped recorder session
+  (hash-only bearer), start recording, chunked upload (raw octet-stream,
+  SHA-256 verified, idempotent on recording+sequence+hash), complete with
+  server-side missing-chunk detection and resend, status polling. Join
+  endpoint rate-limited.
+- Recording state machine (§24) with explicit resumable transitions; durable
+  SQLite job runner (claim/retry/backoff, stale-RUNNING recovery on restart);
+  ASSEMBLE_AUDIO job: concat → ffprobe validate → ffmpeg remux → canonical
+  file + checksum + manifest.json.
+- Recorder phone SPA (separate PUBLIC bundle, no Nextcloud chrome): QR join
+  (secret stripped from URL), pre-flight checks (mic, formats, IndexedDB,
+  persistence, connectivity, level meter, 5-s test), recording screen with
+  IndexedDB-first chunk pipeline, upload/pending status, offline banner,
+  wake lock, finish → synchronize → server-validated done state.
+- 28 tests total; recorder integration suite uses real opus audio through the
+  real assembly pipeline and covers duplicate upload (Test D) and missing
+  chunk (Test E). Live HTTPS end-to-end verified on the dev server
+  (join → upload → AUDIO_READY, duration validated).
+
 ### Milestone 1 — 2026-08-23
 
 - Assembly core backend: assemblies, rounds (add/edit/reorder/delete), tables,

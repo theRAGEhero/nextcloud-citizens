@@ -3,8 +3,26 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import MetaData
+from sqlalchemy import DateTime, MetaData, TypeDecorator
 from sqlalchemy.orm import DeclarativeBase
+
+
+class TZDateTime(TypeDecorator):
+    """Store aware datetimes as naive UTC (SQLite has no timezone support) and
+    re-attach UTC on read, so the application only ever sees aware datetimes."""
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None and value.tzinfo is not None:
+            value = value.astimezone(UTC).replace(tzinfo=None)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value
 
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",

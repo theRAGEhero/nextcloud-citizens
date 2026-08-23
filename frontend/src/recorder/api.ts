@@ -1,0 +1,114 @@
+/* Recorder API client. The base URL is injected by the recorder HTML page. */
+
+declare global {
+	interface Window {
+		__CITIZENS_RECORDER_BASE__?: string
+	}
+}
+
+export interface RoundInfo {
+	id: string
+	position: number
+	title: string
+	question: string
+	duration_minutes: number
+	status: string
+}
+
+export interface JoinResult {
+	session_token: string
+	expires_at: string
+	assembly: { id: string; name: string; language: string }
+	table_number: number
+	rounds: RoundInfo[]
+}
+
+export interface RecorderStatus {
+	assembly: { id: string; name: string; language: string }
+	table_number: number
+	rounds: RoundInfo[]
+}
+
+export interface RecordingStatus {
+	recording_id: string
+	state: string
+	received_chunks: number
+	total_chunks: number | null
+	missing_sequences: number[]
+	error_code: string
+	duration_seconds: number | null
+}
+
+// window.__CITIZENS_RECORDER_BASE__ ends in "/recorder"; the API lives beside it.
+function appBase(): string {
+	const recorderBase = window.__CITIZENS_RECORDER_BASE__ ?? '/recorder'
+	return recorderBase.replace(/\/recorder$/, '')
+}
+
+export class RecorderApiError extends Error {
+	status: number
+
+	constructor(status: number, message: string) {
+		super(message)
+		this.status = status
+	}
+}
+
+async function request<T>(
+	method: string,
+	path: string,
+	options: { token?: string; json?: unknown; body?: BodyInit; headers?: Record<string, string> } = {},
+): Promise<T> {
+	const headers: Record<string, string> = { ...options.headers }
+	if (options.token) headers.Authorization = `Bearer ${options.token}`
+	let body: BodyInit | undefined = options.body
+	if (options.json !== undefined) {
+		headers['Content-Type'] = 'application/json'
+		body = JSON.stringify(options.json)
+	}
+	const response = await fetch(appBase() + path, { method, headers, body })
+	if (!response.ok) {
+		let detail = `HTTP ${response.status}`
+		try {
+			const data = await response.json()
+			if (data && typeof data.detail === 'string') detail = data.detail
+		} catch {
+			/* not JSON */
+		}
+		throw new RecorderApiError(response.status, detail)
+	}
+	return (await response.json()) as T
+}
+
+export const recorderApi = {
+	join: (token: string) => request<JoinResult>('POST', '/api/v1/public/join', { json: { token } }),
+
+	status: (token: string) => request<RecorderStatus>('GET', '/api/v1/public/recorder/status', { token }),
+
+	start: (token: string, roundId: string, mimeType: string) =>
+		request<{ recording_id: string; state: string }>('POST', '/api/v1/public/recorder/start', {
+			token,
+			json: { round_id: roundId, mime_type: mimeType },
+		}),
+
+	uploadChunk: (token: string, recordingId: string, seq: number, blob: Blob, sha256: string) =>
+		request<{ acknowledged: boolean; duplicate: boolean }>(
+			'POST',
+			`/api/v1/public/recorder/recordings/${recordingId}/chunks/${seq}`,
+			{
+				token,
+				body: blob,
+				headers: { 'Content-Type': 'application/octet-stream', 'X-Chunk-SHA256': sha256 },
+			},
+		),
+
+	complete: (token: string, recordingId: string, totalChunks: number) =>
+		request<{ state: string; missing_sequences: number[] }>(
+			'POST',
+			`/api/v1/public/recorder/recordings/${recordingId}/complete`,
+			{ token, json: { total_chunks: totalChunks } },
+		),
+
+	recordingStatus: (token: string, recordingId: string) =>
+		request<RecordingStatus>('GET', `/api/v1/public/recorder/recordings/${recordingId}`, { token }),
+}

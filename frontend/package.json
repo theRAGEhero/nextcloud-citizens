@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && vite build --config vite.recorder.config.ts",
+    "build:organizer": "vite build",
+    "build:recorder": "vite build --config vite.recorder.config.ts",
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {

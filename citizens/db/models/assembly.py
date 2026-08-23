@@ -2,10 +2,10 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from citizens.db.models.base import Base, new_uuid, utcnow
+from citizens.db.models.base import Base, TZDateTime, new_uuid, utcnow
 
 ASSEMBLY_STATUSES = ("DRAFT", "READY", "ACTIVE", "PROCESSING", "REVIEW", "COMPLETE")
 ROUND_STATUSES = ("NOT_STARTED", "ACTIVE", "ENDED", "PROCESSING", "READY_FOR_REVIEW")
@@ -18,13 +18,13 @@ class Assembly(Base):
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     language: Mapped[str] = mapped_column(String(10), default="en")
-    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scheduled_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     status: Mapped[str] = mapped_column(String(20), default="DRAFT")
     expected_participants: Mapped[int] = mapped_column(Integer, default=0)
     default_table_count: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[str] = mapped_column(String(64), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow, onupdate=utcnow)
 
     rounds: Mapped[list["Round"]] = relationship(
         back_populates="assembly", cascade="all, delete-orphan", order_by="Round.position"
@@ -49,8 +49,8 @@ class Round(Base):
     question: Mapped[str] = mapped_column(Text, default="")
     duration_minutes: Mapped[int] = mapped_column(Integer, default=30)
     status: Mapped[str] = mapped_column(String(20), default="NOT_STARTED")
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(TZDateTime())
+    ended_at: Mapped[datetime | None] = mapped_column(TZDateTime())
 
     assembly: Mapped[Assembly] = relationship(back_populates="rounds")
     tables: Mapped[list["Table"]] = relationship(
@@ -86,7 +86,7 @@ class Participant(Base):
     name: Mapped[str] = mapped_column(String(200), default="")
     email: Mapped[str] = mapped_column(String(200), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
 
     assembly: Mapped[Assembly] = relationship(back_populates="participants")
 
@@ -117,8 +117,8 @@ class RecorderInvite(Base):
     table_number: Mapped[int] = mapped_column(Integer)
     # only the SHA-256 hex digest of the invite token is ever stored
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(TZDateTime())
+    last_used_at: Mapped[datetime | None] = mapped_column(TZDateTime())
 
     assembly: Mapped[Assembly] = relationship(back_populates="invites")

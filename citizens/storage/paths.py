@@ -29,3 +29,17 @@ def temp_dir(root: Path) -> Path:
 
 def recordings_dir(root: Path) -> Path:
     return root / "recordings"
+
+
+def recording_dir(root: Path, assembly_id: str, round_id: str, table_id: str, recording_id: str) -> Path:
+    """recordings/<assembly>/<round>/<table>/<recording>/ — all path segments are
+    server-generated UUIDs, never client input (path-traversal safe by design)."""
+    return recordings_dir(root) / assembly_id / round_id / table_id / recording_id
+
+
+def chunk_path(recording_directory: Path, sequence_number: int) -> Path:
+    return recording_directory / "chunks" / f"{sequence_number:06d}.bin"
+
+
+def assembled_dir(root: Path, assembly_id: str) -> Path:
+    return root / "assembled" / assembly_id

@@ -47,9 +47,19 @@ evidence-linked AI analysis that a human organizer reviews and approves.]]>
 				<access_level>ADMIN</access_level>
 			</route>
 			<route>
+				<url>^api\/v1\/public\/.*</url>
+				<verb>GET,POST</verb>
+				<access_level>PUBLIC</access_level>
+			</route>
+			<route>
 				<url>^api\/v1\/.*</url>
 				<verb>GET,POST,PUT,PATCH,DELETE</verb>
 				<access_level>USER</access_level>
+			</route>
+			<route>
+				<url>^recorder.*</url>
+				<verb>GET</verb>
+				<access_level>PUBLIC</access_level>
 			</route>
 		</routes>
 	</external-app>
