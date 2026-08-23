@@ -14,10 +14,14 @@ const level = ref(0)
 const startError = ref('')
 const roundEnded = ref(false)
 const clearedNote = ref('')
+const showLive = ref(false)
+const liveLines = ref<Array<{ t: number; text: string }>>([])
+const liveChecked = ref(false)
 
 let clockTimer = 0
 let levelTimer = 0
 let roundPollTimer = 0
+let livePollTimer = 0
 let audioContext: AudioContext | null = null
 let wakeLock: WakeLockSentinel | null = null
 
@@ -83,10 +87,29 @@ async function reacquireWakeLock(): Promise<void> {
 	}
 }
 
+function toggleLive(): void {
+	showLive.value = !showLive.value
+	if (showLive.value && !livePollTimer) {
+		const poll = async () => {
+			if (!state.recordingId || state.phase !== 'recording') return
+			try {
+				const result = await recorderApi.liveTranscript(props.session.session_token, state.recordingId)
+				liveLines.value = result.lines.slice(-8)
+				liveChecked.value = true
+			} catch {
+				/* captions are best-effort */
+			}
+		}
+		void poll()
+		livePollTimer = window.setInterval(() => void poll(), 6000)
+	}
+}
+
 onBeforeUnmount(() => {
 	window.clearInterval(clockTimer)
 	window.clearInterval(levelTimer)
 	window.clearInterval(roundPollTimer)
+	window.clearInterval(livePollTimer)
 	audioContext?.close()
 	wakeLock?.release().catch(() => undefined)
 	document.removeEventListener('visibilitychange', reacquireWakeLock)
@@ -167,6 +190,21 @@ async function clearSynced(): Promise<void> {
 			</div>
 
 			<template v-if="state.phase === 'recording'">
+				<button class="rc-btn rc-subtle" @click="toggleLive">
+					{{ showLive ? 'Hide live transcript' : 'Show live transcript' }}
+				</button>
+				<div v-if="showLive" class="rc-card">
+					<p class="rc-muted" style="margin: 0 0 8px; font-size: 12px; letter-spacing: 0.05em">
+						LIVE TRANSCRIPT — PROVISIONAL
+					</p>
+					<p v-if="liveLines.length === 0" class="rc-muted" style="font-size: 14px">
+						{{ liveChecked ? 'Live captions temporarily unavailable. Recording continues safely.' : 'Waiting for captions…' }}
+					</p>
+					<p v-for="(line, index) in liveLines" :key="index" style="font-size: 15px; margin: 6px 0">
+						{{ line.text }}
+					</p>
+				</div>
+
 				<button v-if="!confirmFinish" class="rc-btn" @click="confirmFinish = true">
 					Finish recording
 				</button>

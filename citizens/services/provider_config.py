@@ -4,6 +4,7 @@ API keys are stored with the `sensitive` flag (encrypted by Nextcloud, brief
 §28) and are never returned by any API — only `configured` + a short hint.
 """
 
+import time
 from typing import Protocol
 
 import httpx
@@ -12,12 +13,50 @@ from citizens.logging_setup import get_logger
 
 log = get_logger(__name__)
 
+_LIVE_SNAPSHOT_TTL = 30.0
+_live_snapshot: tuple[float, dict] | None = None
+
+
+def live_stt_snapshot() -> dict:
+    """Cached view of the live-STT config — read on every chunk upload, so it
+    must not hit Nextcloud's AppConfig OCS API each time."""
+    global _live_snapshot
+    now = time.monotonic()
+    if _live_snapshot is not None and now - _live_snapshot[0] < _LIVE_SNAPSHOT_TTL:
+        return _live_snapshot[1]
+    try:
+        store = default_store()
+        provider = get_setting(store, "stt_provider")
+        snapshot = {
+            "enabled": get_setting(store, "stt_live_enabled") == "1",
+            "provider": provider,
+            "api_key": store.get_value(f"{provider}_api_key")
+            if provider == "deepgram"
+            else store.get_value("mistral_api_key"),
+            "model": get_setting(store, "deepgram_model")
+            if provider == "deepgram"
+            else get_setting(store, "mistral_stt_model"),
+        }
+    except Exception:
+        log.warning("live_stt_snapshot_failed", exc_info=True)
+        snapshot = {"enabled": False, "provider": "", "api_key": None, "model": ""}
+    _live_snapshot = (now, snapshot)
+    return snapshot
+
+
+def invalidate_snapshot() -> None:
+    global _live_snapshot
+    _live_snapshot = None
+
 KEY_FIELDS = ("mistral_api_key", "deepgram_api_key", "analysis_api_key")
 
 DEFAULTS = {
     "stt_provider": "mistral",
     "stt_live_enabled": "1",
     "stt_batch_enabled": "1",
+    # model IDs verified against provider docs 2026-08-23
+    "deepgram_model": "nova-3",
+    "mistral_stt_model": "voxtral-mini-latest",
     "analysis_base_url": "https://api.mistral.ai/v1",
     "analysis_model": "mistral-large-latest",
 }
@@ -29,6 +68,14 @@ class ConfigStore(Protocol):
     def set_value(self, key: str, value: str, sensitive: bool = False) -> None: ...
 
     def delete_value(self, key: str) -> None: ...
+
+
+def default_store() -> "AppConfigStore":
+    """Store for non-request contexts (background jobs). Builds its own
+    NextcloudApp client from the AppAPI environment."""
+    from nc_py_api import NextcloudApp
+
+    return AppConfigStore(NextcloudApp())
 
 
 class AppConfigStore:
@@ -83,8 +130,10 @@ def providers_summary(store: ConfigStore) -> dict:
             "batch_enabled": get_setting(store, "stt_batch_enabled") == "1",
             "mistral_configured": bool(store.get_value("mistral_api_key")),
             "mistral_key_hint": key_hint(store, "mistral_api_key"),
+            "mistral_model": get_setting(store, "mistral_stt_model"),
             "deepgram_configured": bool(store.get_value("deepgram_api_key")),
             "deepgram_key_hint": key_hint(store, "deepgram_api_key"),
+            "deepgram_model": get_setting(store, "deepgram_model"),
         },
         "analysis": {
             "base_url": get_setting(store, "analysis_base_url"),
@@ -95,33 +144,39 @@ def providers_summary(store: ConfigStore) -> dict:
     }
 
 
-def test_connection(store: ConfigStore, target: str) -> dict:
-    """Verify stored credentials against the provider. Never logs or returns
+def test_connection(
+    store: ConfigStore,
+    target: str,
+    override_key: str | None = None,
+    override_base_url: str | None = None,
+) -> dict:
+    """Verify credentials against the provider. `override_key` lets the admin
+    test a key typed into the form BEFORE saving it. Never logs or returns
     key material."""
     try:
         if target == "mistral":
-            key = store.get_value("mistral_api_key")
+            key = override_key or store.get_value("mistral_api_key")
             if not key:
-                return {"ok": False, "message": "No Mistral API key configured"}
+                return {"ok": False, "message": "No Mistral API key — paste one or save it first"}
             response = httpx.get(
                 "https://api.mistral.ai/v1/models",
                 headers={"Authorization": f"Bearer {key}"},
                 timeout=15,
             )
         elif target == "deepgram":
-            key = store.get_value("deepgram_api_key")
+            key = override_key or store.get_value("deepgram_api_key")
             if not key:
-                return {"ok": False, "message": "No Deepgram API key configured"}
+                return {"ok": False, "message": "No Deepgram API key — paste one or save it first"}
             response = httpx.get(
                 "https://api.deepgram.com/v1/auth/token",
                 headers={"Authorization": f"Token {key}"},
                 timeout=15,
             )
         elif target == "analysis":
-            key = store.get_value("analysis_api_key")
+            key = override_key or store.get_value("analysis_api_key")
             if not key:
-                return {"ok": False, "message": "No analysis API key configured"}
-            base = get_setting(store, "analysis_base_url").rstrip("/")
+                return {"ok": False, "message": "No analysis API key — paste one or save it first"}
+            base = (override_base_url or get_setting(store, "analysis_base_url")).rstrip("/")
             response = httpx.get(
                 f"{base}/models", headers={"Authorization": f"Bearer {key}"}, timeout=15
             )

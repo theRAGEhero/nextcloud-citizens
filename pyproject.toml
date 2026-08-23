@@ -21,6 +21,7 @@ dependencies = [
     "httpx>=0.27",
     "structlog>=24.1",
     "segno>=1.6",
+    "websockets>=13",
 ]
 
 [project.optional-dependencies]

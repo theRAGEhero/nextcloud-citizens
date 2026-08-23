@@ -89,8 +89,10 @@ export interface ProvidersSummary {
 		batch_enabled: boolean
 		mistral_configured: boolean
 		mistral_key_hint: string
+		mistral_model: string
 		deepgram_configured: boolean
 		deepgram_key_hint: string
+		deepgram_model: string
 	}
 	analysis: {
 		base_url: string
@@ -98,6 +100,23 @@ export interface ProvidersSummary {
 		configured: boolean
 		key_hint: string
 	}
+}
+
+export interface TranscriptSegment {
+	id: string
+	speaker: string
+	start: number
+	end: number
+	text: string
+}
+
+export interface TranscriptData {
+	transcript_id: string
+	recording_id: string
+	provider: string
+	model: string
+	language: string
+	segments: TranscriptSegment[]
 }
 
 export interface RoundMonitor {

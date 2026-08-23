@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
-import type { AssemblyDetail, RoundMonitor } from '../types'
+import type { AssemblyDetail, RoundMonitor, TranscriptData } from '../types'
 
 const props = defineProps<{ assembly: AssemblyDetail }>()
 const emit = defineEmits<{ changed: [] }>()
@@ -15,6 +15,9 @@ const busy = ref(false)
 const now = ref(Date.now())
 const openTable = ref<number | null>(null)
 const deviceLog = ref<string[]>([])
+const transcript = ref<TranscriptData | null>(null)
+const transcriptError = ref('')
+const transcriptFor = ref('')
 
 let pollTimer = 0
 let clockTimer = 0
@@ -70,6 +73,40 @@ async function run(action: () => Promise<unknown>): Promise<void> {
 
 const startRound = () => run(() => api.startRound(roundId.value))
 const endRound = () => run(() => api.endRound(roundId.value))
+
+async function showTranscript(recordingId: string): Promise<void> {
+	if (transcriptFor.value === recordingId) {
+		transcriptFor.value = ''
+		transcript.value = null
+		return
+	}
+	transcriptFor.value = recordingId
+	transcript.value = null
+	transcriptError.value = ''
+	try {
+		transcript.value = await api.getTranscript(recordingId)
+	} catch (err) {
+		transcriptError.value = err instanceof Error ? err.message : String(err)
+	}
+}
+
+async function transcribe(recordingId: string): Promise<void> {
+	busy.value = true
+	try {
+		await api.requestTranscription(recordingId)
+		await poll()
+	} catch (err) {
+		error.value = err instanceof Error ? err.message : String(err)
+	} finally {
+		busy.value = false
+	}
+}
+
+function formatTime(seconds: number): string {
+	const minutes = Math.floor(seconds / 60)
+	const secs = Math.floor(seconds % 60)
+	return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+}
 
 async function showDevice(tableNumber: number): Promise<void> {
 	openTable.value = openTable.value === tableNumber ? null : tableNumber
@@ -158,13 +195,56 @@ async function showDevice(tableNumber: number): Promise<void> {
 							<span v-else class="cz-muted">unknown</span>
 						</td>
 						<td>
-							<button class="cz-btn cz-small" @click="showDevice(table.number)">
-								{{ openTable === table.number ? 'Hide' : 'Details' }}
-							</button>
+							<div class="cz-row" style="gap: 6px">
+								<button
+									v-if="table.recording && ['AUDIO_READY', 'TRANSCRIPTION_FAILED'].includes(table.recording.state)"
+									class="cz-btn cz-small cz-primary"
+									:disabled="busy"
+									@click="transcribe(table.recording.id)">
+									Transcribe
+								</button>
+								<button
+									v-if="table.recording && table.recording.state === 'TRANSCRIBED'"
+									class="cz-btn cz-small"
+									@click="showTranscript(table.recording.id)">
+									{{ transcriptFor === table.recording.id ? 'Hide transcript' : 'Transcript' }}
+								</button>
+								<button class="cz-btn cz-small" @click="showDevice(table.number)">
+									{{ openTable === table.number ? 'Hide' : 'Details' }}
+								</button>
+							</div>
 						</td>
 					</tr>
 				</tbody>
 			</table>
+
+			<div v-if="transcriptFor" class="cz-card" style="margin-top: 14px">
+				<h3>
+					Transcript
+					<span v-if="transcript" class="cz-muted" style="font-weight: 400; font-size: 13px">
+						— {{ transcript.provider }} / {{ transcript.model }}
+					</span>
+				</h3>
+				<div v-if="transcriptError" class="cz-error">{{ transcriptError }}</div>
+				<p v-else-if="!transcript" class="cz-muted">Loading…</p>
+				<template v-else>
+					<p v-if="transcript.segments.length === 0" class="cz-muted">
+						The transcript is empty (no speech detected).
+					</p>
+					<div
+						v-for="segment in transcript.segments"
+						:key="segment.id"
+						style="margin: 10px 0; display: flex; gap: 12px">
+						<span class="cz-muted" style="font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 13px">
+							{{ formatTime(segment.start) }}
+						</span>
+						<div>
+							<strong v-if="segment.speaker" style="font-size: 13px">{{ segment.speaker }}</strong>
+							<p style="margin: 2px 0">{{ segment.text }}</p>
+						</div>
+					</div>
+				</template>
+			</div>
 
 			<div v-if="openTable !== null" class="cz-card" style="margin-top: 14px">
 				<h3>Table {{ openTable }} — device log (latest 50)</h3>

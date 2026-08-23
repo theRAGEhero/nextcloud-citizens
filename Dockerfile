@@ -1,7 +1,8 @@
 FROM python:3.12-slim
 
+# espeak-ng: synthetic speech for end-to-end transcription tests
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg espeak-ng \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

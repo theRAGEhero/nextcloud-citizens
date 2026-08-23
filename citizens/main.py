@@ -18,12 +18,14 @@ from citizens.api.public_recorder import router as public_recorder_router
 from citizens.api.recorder_page import router as recorder_page_router
 from citizens.api.recorders import router as recorders_router
 from citizens.api.system import router as system_router
+from citizens.api.transcripts import router as transcripts_router
 from citizens.config import get_settings
 from citizens.db.migrate import run_migrations
 from citizens.db.session import configure_database, sqlite_url
 from citizens.jobs.runner import run_forever as jobs_run_forever
 from citizens.logging_setup import get_logger, setup_logging
 from citizens.services.audit import record_audit_event_standalone
+from citizens.services.live_captions import LIVE_CAPTIONS
 from citizens.storage.paths import db_path, ensure_storage_layout
 
 log = get_logger(__name__)
@@ -57,9 +59,11 @@ async def lifespan(app: FastAPI):
     set_handlers(app, enabled_handler)
     stop_event = asyncio.Event()
     jobs_task = asyncio.create_task(jobs_run_forever(stop_event))
+    LIVE_CAPTIONS.set_loop(asyncio.get_running_loop())
     log.info("app_started", version=settings.app_version, storage=str(settings.app_persistent_storage))
     yield
     stop_event.set()
+    await LIVE_CAPTIONS.shutdown()
     await jobs_task
     log.info("app_stopping")
 
@@ -91,6 +95,7 @@ def create_app(with_auth: bool = True) -> FastAPI:
     app.include_router(recorders_router, prefix="/api/v1")
     app.include_router(public_recorder_router, prefix="/api/v1")
     app.include_router(admin_router, prefix="/api/v1")
+    app.include_router(transcripts_router, prefix="/api/v1")
     app.include_router(recorder_page_router)
     recorder_static = Path(__file__).resolve().parent.parent / "recorder_static"
     if recorder_static.is_dir():

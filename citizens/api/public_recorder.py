@@ -17,6 +17,8 @@ from citizens.db.models.base import utcnow
 from citizens.db.session import get_db
 from citizens.security.rate_limit import JOIN_LIMITER, client_ip
 from citizens.services import recording as rec_svc
+from citizens.services.live_captions import LIVE_CAPTIONS
+from citizens.services.provider_config import live_stt_snapshot
 from citizens.storage.paths import device_log_path
 
 router = APIRouter(prefix="/public")
@@ -83,7 +85,15 @@ async def upload_chunk(
         raise HTTPException(status_code=422, detail="Invalid sequence number")
     body = await request.body()
     recording = rec_svc.get_session_recording(session, recorder_session, recording_id)
-    return rec_svc.receive_chunk(session, recording, sequence_number, x_chunk_sha256, body)
+    result = rec_svc.receive_chunk(session, recording, sequence_number, x_chunk_sha256, body)
+    if not result.get("duplicate"):
+        # provisional live captions ride on the safety upload — failures here
+        # never affect the recording (brief §51)
+        assembly = session.get(Assembly, recording.assembly_id)
+        LIVE_CAPTIONS.feed(
+            recording.id, body, live_stt_snapshot(), assembly.language if assembly else ""
+        )
+    return result
 
 
 class CompleteIn(BaseModel):
@@ -95,7 +105,18 @@ def complete(
     recording_id: str, data: CompleteIn, recorder_session: RecorderSess, session: DB
 ):
     recording = rec_svc.get_session_recording(session, recorder_session, recording_id)
-    return rec_svc.complete_recording(session, recording, data.total_chunks)
+    result = rec_svc.complete_recording(session, recording, data.total_chunks)
+    if not result["missing_sequences"]:
+        LIVE_CAPTIONS.finish(recording.id)
+    return result
+
+
+@router.get("/recorder/recordings/{recording_id}/live")
+def live_transcript(recording_id: str, recorder_session: RecorderSess, session: DB):
+    """Provisional live captions for this table's recording (may be empty or
+    unavailable — that is never an error)."""
+    recording = rec_svc.get_session_recording(session, recorder_session, recording_id)
+    return LIVE_CAPTIONS.status(recording.id)
 
 
 @router.get("/recorder/recordings/{recording_id}")

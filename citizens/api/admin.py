@@ -44,7 +44,9 @@ class ProvidersUpdate(BaseModel):
     stt_live_enabled: bool | None = None
     stt_batch_enabled: bool | None = None
     mistral_api_key: str | None = Field(default=None, max_length=500)
+    mistral_stt_model: str | None = Field(default=None, max_length=100)
     deepgram_api_key: str | None = Field(default=None, max_length=500)
+    deepgram_model: str | None = Field(default=None, max_length=100)
     analysis_base_url: str | None = Field(default=None, max_length=500)
     analysis_model: str | None = Field(default=None, max_length=200)
     analysis_api_key: str | None = Field(default=None, max_length=500)
@@ -61,6 +63,7 @@ def update_providers(data: ProvidersUpdate, store: Store, user: CurrentUser, ses
         else:
             values[field] = value.strip() if field in provider_config.KEY_FIELDS else value
     changed = provider_config.set_settings(store, values)
+    provider_config.invalidate_snapshot()
     record_audit_event(
         session, "providers_updated", actor=user, data={"fields": changed}
     )
@@ -69,8 +72,16 @@ def update_providers(data: ProvidersUpdate, store: Store, user: CurrentUser, ses
 
 class TestIn(BaseModel):
     target: Literal["mistral", "deepgram", "analysis"]
+    # lets the admin test what's typed in the form before saving it
+    api_key: str | None = Field(default=None, max_length=500)
+    base_url: str | None = Field(default=None, max_length=500)
 
 
 @router.post("/providers/test")
 def test_provider(data: TestIn, store: Store, user: CurrentUser):
-    return provider_config.test_connection(store, data.target)
+    return provider_config.test_connection(
+        store,
+        data.target,
+        override_key=(data.api_key or "").strip() or None,
+        override_base_url=(data.base_url or "").strip() or None,
+    )

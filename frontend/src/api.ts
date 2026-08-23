@@ -9,6 +9,7 @@ import type {
 	RoundIn,
 	RoundMonitor,
 	Table,
+	TranscriptData,
 } from './types'
 
 // Derive the ExApp base URL from our own <script src>, so the app works both
@@ -99,12 +100,20 @@ export const api = {
 	getProviders: () => request<ProvidersSummary>('GET', '/api/v1/admin/providers'),
 	updateProviders: (payload: Record<string, unknown>) =>
 		request<ProvidersSummary>('PUT', '/api/v1/admin/providers', payload),
-	testProvider: (target: 'mistral' | 'deepgram' | 'analysis') =>
-		request<{ ok: boolean; message: string }>('POST', '/api/v1/admin/providers/test', { target }),
+	testProvider: (target: 'mistral' | 'deepgram' | 'analysis', apiKey?: string, baseUrl?: string) =>
+		request<{ ok: boolean; message: string }>('POST', '/api/v1/admin/providers/test', {
+			target,
+			api_key: apiKey,
+			base_url: baseUrl,
+		}),
 
 	startRound: (roundId: string) => request<Round>('POST', `/api/v1/rounds/${roundId}/start`),
 	endRound: (roundId: string) => request<Round>('POST', `/api/v1/rounds/${roundId}/end`),
 	roundMonitor: (roundId: string) => request<RoundMonitor>('GET', `/api/v1/rounds/${roundId}/monitor`),
+	getTranscript: (recordingId: string) =>
+		request<TranscriptData>('GET', `/api/v1/recordings/${recordingId}/transcript`),
+	requestTranscription: (recordingId: string) =>
+		request<{ queued: boolean }>('POST', `/api/v1/recordings/${recordingId}/transcribe`),
 	deviceLogs: (assemblyId: string, tableNumber: number, tail = 200) =>
 		request<{ session_id: string | null; lines: string[] }>(
 			'GET',

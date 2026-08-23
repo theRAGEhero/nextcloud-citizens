@@ -4,6 +4,30 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Milestone 4 — 2026-08-23 (STT: batch + live)
+
+- Batch transcription pipeline: after audio validation, recordings are
+  automatically transcribed by the configured provider (Deepgram `nova-3`
+  with `diarize_model=latest` + utterances; Mistral Voxtral
+  `voxtral-mini-latest` with `diarize` — model IDs verified against provider
+  docs 2026-08-23 and admin-configurable). Normalized transcript schema
+  (SPEAKER_NN by first appearance, segments + word timestamps), raw provider
+  JSON retained on disk, durable TRANSCRIBE_FINAL job with temporary-error
+  retry and permanent-error surfacing, organizer transcript API + manual
+  (re)transcribe, transcript panel in the Live tab.
+- Provisional live captions: the phone's safety chunks are forwarded into a
+  server-side Deepgram streaming session (zero extra phone bandwidth);
+  recorder "Show live transcript" panel, clearly labeled PROVISIONAL;
+  failures cool down instead of reconnect-looping and never affect
+  recording. Mistral Voxtral Realtime not yet wired (captions report
+  unavailable with Mistral).
+- Settings: STT model fields per provider; "Test connection" now tests the
+  key typed in the form before saving (the reported "No API key configured"
+  confusion). Deepgram key stored (encrypted) and verified live; full
+  speech → chunked upload → assembly → automatic Deepgram transcription with
+  diarization verified end-to-end on the production server, live captions
+  included. 52 tests.
+
 ### Fix round + platform upgrade — 2026-08-23
 
 - **Recorder CSP fix**: the page moved to `/recorder.html` and ships its own

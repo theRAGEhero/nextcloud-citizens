@@ -14,7 +14,9 @@ const sttProvider = ref<'mistral' | 'deepgram'>('mistral')
 const liveEnabled = ref(true)
 const batchEnabled = ref(true)
 const mistralKey = ref('')
+const mistralModel = ref('')
 const deepgramKey = ref('')
+const deepgramModel = ref('')
 const analysisBaseUrl = ref('')
 const analysisModel = ref('')
 const analysisKey = ref('')
@@ -25,6 +27,8 @@ async function reload(): Promise<void> {
 	sttProvider.value = summary.value.stt.provider
 	liveEnabled.value = summary.value.stt.live_enabled
 	batchEnabled.value = summary.value.stt.batch_enabled
+	mistralModel.value = summary.value.stt.mistral_model
+	deepgramModel.value = summary.value.stt.deepgram_model
 	analysisBaseUrl.value = summary.value.analysis.base_url
 	analysisModel.value = summary.value.analysis.model
 }
@@ -46,6 +50,8 @@ async function save(): Promise<void> {
 			stt_provider: sttProvider.value,
 			stt_live_enabled: liveEnabled.value,
 			stt_batch_enabled: batchEnabled.value,
+			mistral_stt_model: mistralModel.value.trim(),
+			deepgram_model: deepgramModel.value.trim(),
 			analysis_base_url: analysisBaseUrl.value.trim(),
 			analysis_model: analysisModel.value.trim(),
 		}
@@ -68,7 +74,14 @@ async function save(): Promise<void> {
 async function test(target: 'mistral' | 'deepgram' | 'analysis'): Promise<void> {
 	busy.value = true
 	try {
-		testResults.value = { ...testResults.value, [target]: await api.testProvider(target) }
+		// test the key typed into the form (if any) so Test works before Save
+		const typed =
+			target === 'mistral' ? mistralKey.value : target === 'deepgram' ? deepgramKey.value : analysisKey.value
+		const baseUrl = target === 'analysis' ? analysisBaseUrl.value.trim() : undefined
+		testResults.value = {
+			...testResults.value,
+			[target]: await api.testProvider(target, typed.trim() || undefined, baseUrl),
+		}
 	} catch (err) {
 		testResults.value = {
 			...testResults.value,
@@ -125,6 +138,10 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 						{{ testResults.mistral.ok ? '✓' : '✕' }} {{ testResults.mistral.message }}
 					</span>
 				</div>
+				<div class="cz-field" style="max-width: 320px">
+					<label>Mistral transcription model</label>
+					<input v-model="mistralModel" type="text" placeholder="voxtral-mini-latest" />
+				</div>
 
 				<div class="cz-field" style="max-width: 480px">
 					<label>Deepgram API key</label>
@@ -143,6 +160,10 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 						style="margin: 6px 0 0; padding: 6px 10px">
 						{{ testResults.deepgram.ok ? '✓' : '✕' }} {{ testResults.deepgram.message }}
 					</span>
+				</div>
+				<div class="cz-field" style="max-width: 320px">
+					<label>Deepgram model</label>
+					<input v-model="deepgramModel" type="text" placeholder="nova-3" />
 				</div>
 
 				<div class="cz-row" style="gap: 24px">
