@@ -8,6 +8,7 @@ import {
 } from '@mdi/js'
 import { onMounted, ref, watch } from 'vue'
 import { api, BASE } from '../api'
+import { groupByType, TYPE_LABELS } from '../labels'
 import type { AssemblyDetail, ReportData } from '../types'
 import CzButton from './ui/CzButton.vue'
 import CzConfirm from './ui/CzConfirm.vue'
@@ -42,11 +43,7 @@ async function togglePublish(): Promise<void> {
 	}
 }
 
-const TYPE_LABELS: Record<string, string> = {
-	proposal: 'Proposal', agreement: 'Agreement', disagreement: 'Disagreement',
-	concern: 'Concern', question: 'Open question', minority_position: 'Minority position',
-	new_idea: 'New idea',
-}
+// shared deliberation-report vocabulary + grouped rendering order
 
 async function reload(): Promise<void> {
 	try {
@@ -178,22 +175,29 @@ const hasContent = () =>
 						<h4 style="font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--cz-text-muted); margin: 12px 0 8px">
 							Across all tables
 						</h4>
-						<div v-for="finding in round.cross_table" :key="finding.id" style="margin-bottom: 14px">
-							<strong>
-								{{ TYPE_LABELS[finding.type] ?? finding.type }}: {{ finding.title }}
-								<span v-if="finding.is_draft" class="cz-pill cz-pill--amber" style="text-transform: none">DRAFT — not reviewed</span>
-							</strong>
-							<p v-if="finding.mentioned_table_count" class="cz-muted" style="font-size: 13px; margin: 2px 0">
-								Mentioned at {{ finding.mentioned_table_count }} table(s)
-							</p>
-							<p style="margin: 4px 0; font-size: 14.5px">{{ finding.summary }}</p>
-							<blockquote
-								v-for="(evidence, index) in finding.evidence.slice(0, 3)"
-								:key="index"
-								style="margin: 6px 0; padding: 4px 12px; border-left: 3px solid var(--cz-border); font-size: 13.5px; color: var(--cz-text-muted)">
-								[{{ evidence.timestamp }}] {{ evidence.speaker || 'Speaker' }}: “{{ evidence.text }}”
-							</blockquote>
-						</div>
+						<template v-for="group in groupByType(round.cross_table)" :key="group.type">
+							<h5
+								style="font-size: 13.5px; font-weight: 700; margin: 10px 0 8px"
+								:style="{ color: group.type === 'disagreement' ? 'var(--cz-amber)' : 'var(--cz-primary)' }">
+								{{ group.label }}
+							</h5>
+							<div v-for="finding in group.findings" :key="finding.id" style="margin-bottom: 14px">
+								<strong>
+									{{ finding.title }}
+									<span v-if="finding.is_draft" class="cz-pill cz-pill--amber" style="text-transform: none">DRAFT — not reviewed</span>
+								</strong>
+								<p v-if="finding.mentioned_table_count" class="cz-muted" style="font-size: 13px; margin: 2px 0">
+									Mentioned at {{ finding.mentioned_table_count }} table(s)
+								</p>
+								<p style="margin: 4px 0; font-size: 14.5px">{{ finding.summary }}</p>
+								<blockquote
+									v-for="(evidence, index) in finding.evidence.slice(0, 3)"
+									:key="index"
+									style="margin: 6px 0; padding: 4px 12px; border-left: 3px solid var(--cz-border); font-size: 13.5px; color: var(--cz-text-muted)">
+									[{{ evidence.timestamp }}] {{ evidence.speaker || 'Speaker' }}: “{{ evidence.text }}”
+								</blockquote>
+							</div>
+						</template>
 					</template>
 
 					<template v-for="table in round.tables" :key="table.table_number">

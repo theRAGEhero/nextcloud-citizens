@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from citizens.config import get_settings
 from citizens.db.models import Assembly, Participant
 from citizens.db.session import get_db
 from citizens.domain import schemas
@@ -14,6 +15,7 @@ from citizens.services import assemblies as svc
 from citizens.services import invites as invite_svc
 from citizens.services import rounds as rounds_svc
 from citizens.services.audit import record_audit_event
+from citizens.storage.paths import purge_assembly_storage
 
 router = APIRouter()
 
@@ -62,6 +64,10 @@ def delete_assembly(assembly_id: str, user: CurrentUser, session: DB):
     record_audit_event(session, "assembly_deleted", "assembly", assembly.id, actor=user,
                        data={"name": assembly.name})
     session.delete(assembly)
+    session.flush()
+    # deleting the session deletes its audio too — chunks, canonical files,
+    # transcripts and exports all leave the disk with the database rows
+    purge_assembly_storage(get_settings().app_persistent_storage, assembly_id)
 
 
 @router.post("/assemblies/{assembly_id}/rounds", response_model=schemas.RoundOut, status_code=201)

@@ -84,3 +84,12 @@ def test_extra_instructions_appended_not_substituted():
 
 def test_no_extra_instructions_keeps_prompt_unchanged():
     assert build_system_prompt(TABLE_SYSTEM, "en", _Store("")) == TABLE_SYSTEM.format(language="en")
+
+
+def test_assembly_instructions_appended_after_global():
+    prompt = build_system_prompt(
+        TABLE_SYSTEM, "en", _Store("Global tone."), assembly_instructions="PUMS = mobility plan."
+    )
+    assert "Write everything in en." in prompt
+    assert prompt.index("Global tone.") < prompt.index("PUMS = mobility plan.")
+    assert "specific to THIS assembly" in prompt

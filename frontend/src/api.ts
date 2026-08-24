@@ -70,9 +70,12 @@ export const api = {
 		recording_mode: 'orchestrated' | 'independent'
 		expected_participants: number
 		default_table_count: number
+		analysis_instructions: string
 		rounds: RoundIn[]
 	}) => request<AssemblyCreated>('POST', '/api/v1/assemblies', data),
 	getAssembly: (id: string) => request<AssemblyDetail>('GET', `/api/v1/assemblies/${id}`),
+	updateAssembly: (id: string, data: Record<string, unknown>) =>
+		request<AssemblyDetail>('PATCH', `/api/v1/assemblies/${id}`, data),
 	deleteAssembly: (id: string) => request<void>('DELETE', `/api/v1/assemblies/${id}`),
 
 	addRound: (assemblyId: string, data: RoundIn) =>

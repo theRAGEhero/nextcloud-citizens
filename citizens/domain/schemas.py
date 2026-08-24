@@ -40,6 +40,7 @@ class AssemblyCreate(BaseModel):
     recording_mode: Literal["orchestrated", "independent"] = "orchestrated"
     expected_participants: int = Field(default=0, ge=0, le=10000)
     default_table_count: int = Field(default=0, ge=0, le=200)
+    analysis_instructions: str = Field(default="", max_length=4000)
     rounds: list[RoundIn] = []
 
 
@@ -51,6 +52,7 @@ class AssemblyUpdate(BaseModel):
     recording_mode: Literal["orchestrated", "independent"] | None = None
     expected_participants: int | None = Field(default=None, ge=0, le=10000)
     default_table_count: int | None = Field(default=None, ge=0, le=200)
+    analysis_instructions: str | None = Field(default=None, max_length=4000)
 
 
 class AssemblyOut(BaseModel):
@@ -65,6 +67,7 @@ class AssemblyOut(BaseModel):
     recording_mode: str
     expected_participants: int
     default_table_count: int
+    analysis_instructions: str
     created_by: str
     created_at: datetime
 

@@ -15,9 +15,33 @@ import CzStatusPill from './ui/CzStatusPill.vue'
 import SvgIcon from './ui/SvgIcon.vue'
 
 const props = defineProps<{ assembly: AssemblyDetail }>()
-const emit = defineEmits<{ navigate: [tab: 'rounds' | 'participants' | 'tables' | 'qr' | 'monitor'] }>()
+const emit = defineEmits<{
+	navigate: [tab: 'rounds' | 'participants' | 'tables' | 'qr' | 'monitor']
+	changed: []
+}>()
 
 const invites = ref<Invite[]>([])
+const editingInstructions = ref(false)
+const instructionsDraft = ref('')
+const savingInstructions = ref(false)
+
+function startEditInstructions(): void {
+	instructionsDraft.value = props.assembly.analysis_instructions
+	editingInstructions.value = true
+}
+
+async function saveInstructions(): Promise<void> {
+	savingInstructions.value = true
+	try {
+		await api.updateAssembly(props.assembly.id, {
+			analysis_instructions: instructionsDraft.value.trim(),
+		})
+		editingInstructions.value = false
+		emit('changed')
+	} finally {
+		savingInstructions.value = false
+	}
+}
 
 onMounted(async () => {
 	try {
@@ -97,6 +121,35 @@ const nextStep = computed<NextStep | null>(() => {
 					<div class="cz-stat__label">Active QR codes</div>
 				</div>
 			</button>
+		</div>
+
+		<div class="cz-card">
+			<div class="cz-row cz-row--spread" style="margin-bottom: 8px">
+				<h3>AI analysis instructions</h3>
+				<CzButton v-if="!editingInstructions" variant="tertiary" small @click="startEditInstructions">
+					{{ assembly.analysis_instructions ? 'Edit' : 'Add' }}
+				</CzButton>
+			</div>
+			<template v-if="editingInstructions">
+				<textarea
+					v-model="instructionsDraft"
+					rows="3"
+					style="width: 100%"
+					placeholder="E.g. This assembly is about urban mobility. 'PUMS' means the city's mobility plan."></textarea>
+				<div class="cz-row" style="justify-content: flex-end; margin-top: 8px">
+					<CzButton variant="tertiary" small @click="editingInstructions = false">Cancel</CzButton>
+					<CzButton variant="primary" small :disabled="savingInstructions" @click="saveInstructions">
+						Save
+					</CzButton>
+				</div>
+			</template>
+			<p v-else-if="assembly.analysis_instructions" style="margin: 0; font-size: 14px; white-space: pre-wrap">
+				{{ assembly.analysis_instructions }}
+			</p>
+			<p v-else class="cz-muted" style="margin: 0; font-size: 13.5px">
+				Optional context given to the AI when analyzing this assembly — topic,
+				local glossary, focus areas.
+			</p>
 		</div>
 
 		<div class="cz-card">

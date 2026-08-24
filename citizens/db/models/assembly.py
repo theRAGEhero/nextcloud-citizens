@@ -26,6 +26,9 @@ class Assembly(Base):
     expected_participants: Mapped[int] = mapped_column(Integer, default=0)
     default_table_count: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[str] = mapped_column(String(64), index=True)
+    # organizer-provided context appended to the AI analysis prompts
+    # (topic, glossary) on top of the instance-wide admin instructions
+    analysis_instructions: Mapped[str] = mapped_column(Text, default="")
     # when set, table phones may view/download the (approved-findings) report
     report_published_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)

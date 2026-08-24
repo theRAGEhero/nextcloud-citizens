@@ -26,6 +26,7 @@ const analysisModel = ref('')
 const analysisKey = ref('')
 const analysisEnabled = ref(true)
 const analysisExtra = ref('')
+const orgName = ref('')
 const showPrompts = ref(false)
 const logoSet = ref(false)
 const logoVersion = ref(0)
@@ -87,6 +88,7 @@ async function reload(): Promise<void> {
 	analysisModel.value = summary.value.analysis.model
 	analysisEnabled.value = summary.value.analysis.enabled
 	analysisExtra.value = summary.value.analysis.extra_instructions
+	orgName.value = summary.value.organization_name
 	logoSet.value = summary.value.logo_set
 }
 
@@ -114,6 +116,7 @@ async function save(): Promise<void> {
 			analysis_model: analysisModel.value.trim(),
 			analysis_enabled: analysisEnabled.value,
 			analysis_extra_instructions: analysisExtra.value.trim(),
+			organization_name: orgName.value.trim(),
 		}
 		if (mistralKey.value) payload.mistral_api_key = mistralKey.value
 		if (deepgramKey.value) payload.deepgram_api_key = deepgramKey.value
@@ -190,7 +193,7 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 					</label>
 				</div>
 
-				<div class="cz-fieldgrid">
+				<div v-if="sttProvider === 'mistral'" class="cz-fieldgrid">
 					<div class="cz-field">
 						<label>Mistral API key</label>
 						<div class="cz-row" style="flex-wrap: nowrap">
@@ -208,14 +211,16 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 						</span>
 					</div>
 					<div class="cz-field">
-						<label>Mistral — final transcription model</label>
+						<label>Final transcription model</label>
 						<input v-model="mistralBatchModel" type="text" placeholder="voxtral-mini-latest" />
 					</div>
 					<div class="cz-field">
-						<label>Mistral — live transcription model</label>
+						<label>Live transcription model</label>
 						<input v-model="mistralLiveModel" type="text" placeholder="Voxtral Realtime — not yet active" />
 						<span class="cz-muted" style="font-size: 12px">Live captions with Mistral are not wired up yet.</span>
 					</div>
+				</div>
+				<div v-else class="cz-fieldgrid">
 					<div class="cz-field">
 						<label>Deepgram API key</label>
 						<div class="cz-row" style="flex-wrap: nowrap">
@@ -233,11 +238,11 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 						</span>
 					</div>
 					<div class="cz-field">
-						<label>Deepgram — final transcription model</label>
+						<label>Final transcription model</label>
 						<input v-model="deepgramBatchModel" type="text" placeholder="nova-3" />
 					</div>
 					<div class="cz-field">
-						<label>Deepgram — live transcription model</label>
+						<label>Live transcription model</label>
 						<input v-model="deepgramLiveModel" type="text" placeholder="nova-3" />
 					</div>
 				</div>
@@ -321,11 +326,16 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 			<div class="cz-card">
 				<div class="cz-row" style="margin-bottom: 4px">
 					<SvgIcon :path="mdiImageOutline" :size="22" style="color: var(--cz-primary)" />
-					<h3>Organization logo</h3>
+					<h3>Organization</h3>
 				</div>
 				<p class="cz-muted" style="font-size: 13.5px; margin-bottom: 14px">
-					Shown on the header of PDF reports. PNG or JPEG, up to 1&nbsp;MB.
+					Name and logo appear on the header and footer of PDF reports.
+					Logo: PNG or JPEG, up to 1&nbsp;MB.
 				</p>
+				<div class="cz-field" style="max-width: 420px">
+					<label>Organization name</label>
+					<input v-model="orgName" type="text" placeholder="Democracy Innovators" />
+				</div>
 				<div class="cz-row" style="align-items: center; gap: 16px">
 					<img
 						v-if="logoSet"

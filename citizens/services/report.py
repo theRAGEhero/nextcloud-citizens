@@ -13,15 +13,45 @@ METHODOLOGY_NOTE = (
     "it is not a measure of participant support."
 )
 
+# deliberation-report vocabulary; the fixed order groups cross-table findings
+# in reports (institutional reading order, divergence highlighted)
+TYPE_ORDER = (
+    "proposal", "agreement", "disagreement", "concern",
+    "question", "minority_position", "new_idea",
+)
+
 TYPE_LABELS = {
     "proposal": "Proposals",
-    "agreement": "Agreements",
-    "disagreement": "Disagreements",
-    "concern": "Concerns",
+    "agreement": "Points of consensus",
+    "disagreement": "Points of divergence",
+    "concern": "Concerns raised",
     "question": "Open questions",
     "minority_position": "Minority positions",
-    "new_idea": "New ideas",
+    "new_idea": "Emerging ideas",
 }
+
+TYPE_LABELS_SINGULAR = {
+    "proposal": "Proposal",
+    "agreement": "Point of consensus",
+    "disagreement": "Point of divergence",
+    "concern": "Concern",
+    "question": "Open question",
+    "minority_position": "Minority position",
+    "new_idea": "Emerging idea",
+}
+
+
+def group_findings_by_type(findings: list[dict]) -> list[tuple[str, str, list[dict]]]:
+    """(type, plural label, findings) groups in the institutional order."""
+    groups = []
+    for type_ in TYPE_ORDER:
+        matching = [f for f in findings if f["type"] == type_]
+        if matching:
+            groups.append((type_, TYPE_LABELS[type_], matching))
+    leftover = [f for f in findings if f["type"] not in TYPE_ORDER]
+    if leftover:
+        groups.append(("other", "Other findings", leftover))
+    return groups
 
 APPROVED = ("APPROVED", "EDITED_AND_APPROVED")
 
@@ -174,8 +204,10 @@ def render_markdown(report: dict) -> str:
             lines += [f"*AI summary:* {round_['summary']}", ""]
         if round_["cross_table"]:
             lines += ["### Across all tables", ""]
-            for finding in round_["cross_table"]:
-                lines += _markdown_finding(finding, cross=True)
+            for _type, label, group in group_findings_by_type(round_["cross_table"]):
+                lines += [f"#### {label}", ""]
+                for finding in group:
+                    lines += _markdown_finding(finding, cross=True)
         for table in round_["tables"]:
             if not table["findings"] and not table["summary"]:
                 continue
@@ -196,8 +228,8 @@ def render_markdown(report: dict) -> str:
 
 def _markdown_finding(finding: dict, cross: bool) -> list[str]:
     draft = " *(DRAFT — not yet reviewed)*" if finding["is_draft"] else ""
-    label = TYPE_LABELS.get(finding["type"], finding["type"])
-    header = f"**{label[:-1] if label.endswith('s') else label}: {finding['title']}**{draft}"
+    label = TYPE_LABELS_SINGULAR.get(finding["type"], finding["type"])
+    header = f"**{label}: {finding['title']}**{draft}"
     lines = [header, "", finding["summary"], ""]
     if cross and finding["mentioned_table_count"]:
         lines.insert(2, f"Mentioned at {finding['mentioned_table_count']} table(s).")

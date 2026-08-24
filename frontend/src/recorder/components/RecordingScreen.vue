@@ -58,6 +58,24 @@ const liveChecked = ref(false)
 const captionsBox = ref<HTMLElement | null>(null)
 const nextRound = ref<RoundInfo | null>(null)
 const reportAvailable = ref(false)
+const reportOpenCountdown = ref(0)
+
+let reportOpenTimer = 0
+
+// orchestrated: when the organizer publishes the report and no round is left,
+// the table follows automatically after a short visible countdown
+function beginReportAutoOpen(): void {
+	if (reportOpenTimer) return
+	reportOpenCountdown.value = 3
+	reportOpenTimer = window.setInterval(() => {
+		reportOpenCountdown.value -= 1
+		if (reportOpenCountdown.value <= 0) {
+			window.clearInterval(reportOpenTimer)
+			reportOpenTimer = 0
+			emit('viewReport')
+		}
+	}, 1000)
+}
 const qbarOpen = ref(false)
 const techOpen = ref(false)
 
@@ -84,6 +102,22 @@ function watchForNextRound(): void {
 		try {
 			const status = await recorderApi.status(props.session.session_token)
 			reportAvailable.value = status.report_available ?? false
+			// the done screen auto-records the next round, so the table counts
+			// as armed on the organizer's readiness indicator
+			if (orchestrated && status.rounds.some((r) => !r.recorded_state)) {
+				void recorderApi
+					.heartbeat(props.session.session_token, {
+						recording_active: false,
+						armed: true,
+						local_chunks: 0,
+						acked_chunks: 0,
+						storage_ok: true,
+					})
+					.catch(() => undefined)
+			}
+			if (orchestrated && reportAvailable.value && !status.rounds.some((r) => !r.recorded_state)) {
+				beginReportAutoOpen()
+			}
 			nextRound.value =
 				status.rounds.find((r) => r.status === 'ACTIVE' && !r.recorded_state && r.id !== props.round.id) ??
 				null
@@ -199,6 +233,7 @@ onBeforeUnmount(() => {
 	window.clearInterval(nextRoundTimer)
 	window.clearInterval(countdownTimer)
 	window.clearInterval(nextStartTimer)
+	window.clearInterval(reportOpenTimer)
 	audioContext?.close()
 	wakeLock?.release().catch(() => undefined)
 	document.removeEventListener('visibilitychange', reacquireWakeLock)
@@ -382,7 +417,8 @@ async function clearSynced(): Promise<void> {
 						<template v-if="state.serverState"><br />Server: {{ state.serverState }}</template>
 					</p>
 					<div v-if="!state.uploadOnline" class="rc-note" style="text-align: left">
-						Waiting for network… the audio is safe on this phone. Keep this page open.
+						Connection problem or busy server — retrying automatically.
+						The audio is safe on this phone. Keep this page open.
 					</div>
 				</div>
 			</div>
@@ -407,8 +443,13 @@ async function clearSynced(): Promise<void> {
 						<br />
 						{{ nextRound.question || nextRound.title }}
 					</div>
+					<div v-else-if="reportOpenCountdown > 0" class="rc-note" style="text-align: left; margin-top: 20px">
+						<strong>The assembly report is ready.</strong>
+						Opening in {{ reportOpenCountdown }} s…
+					</div>
 					<p v-else class="rc-muted rc-center" style="margin-top: 20px; font-size: 13.5px">
-						Keep this page open — the next round will appear here when the facilitator starts it.
+						Keep this page open — the next round starts here automatically, and the
+						assembly report will appear when the organizer publishes it.
 					</p>
 				</div>
 			</div>
@@ -433,13 +474,17 @@ async function clearSynced(): Promise<void> {
 		<template v-else-if="state.phase === 'failed'">
 			<div class="rc-scroll">
 				<div class="rc-alert" style="margin-top: 30px">
-					<strong>Something went wrong:</strong><br />{{ state.error }}
+					<strong>Synchronization did not finish:</strong><br />{{ state.error }}
 					<br /><br />
-					Local audio chunks remain stored on this phone.
+					The audio is safely stored on this phone — nothing is lost.
+					Try again in a moment.
 				</div>
 			</div>
 			<div class="rc-actions">
-				<button class="rc-btn" style="margin-top: 0" @click="emit('exit')">Back</button>
+				<button class="rc-btn rc-primary" style="margin-top: 0" @click="engine.retrySync()">
+					Try again
+				</button>
+				<button class="rc-btn rc-subtle" @click="emit('exit')">Back</button>
 			</div>
 		</template>
 	</div>

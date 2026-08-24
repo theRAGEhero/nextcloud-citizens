@@ -42,6 +42,9 @@ def transcribe_recording(
         provider=provider,
         size_bytes=audio_path.stat().st_size,
     )
+    # release the DB write lock for the (potentially minutes-long) provider
+    # call — a held job transaction 500s every API request after busy_timeout
+    session.commit()
     if provider == "deepgram":
         key = store.get_value("deepgram_api_key")
         if not key:

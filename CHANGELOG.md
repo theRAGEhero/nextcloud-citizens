@@ -4,6 +4,35 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Round-end 500 fix + managed flow + institutional reports — 2026-08-24 (v0.4.0)
+
+- **Fixed the round-end HTTP 500** ("database is locked"): background jobs held
+  the SQLite write lock across minutes-long ffmpeg/transcription/analysis
+  calls, starving the phones' finish requests. Jobs now release the lock
+  before external work; verified live with zero failures across 204 status
+  requests hammered through a full processing chain.
+- **Phones never dead-end**: transient server errors auto-retry with backoff
+  ("busy server" note), and a failure screen gains a Try again button. The
+  done screen keeps the table armed for the organizer's readiness count.
+- **Managed flow end-to-end**: after ending a round the Live tab shows a
+  one-click "Start Round N+1" banner (and an "all rounds done" pointer);
+  when the organizer publishes the report, phones auto-open it after a 3 s
+  countdown.
+- **Institutional PDF**: branded header with organization logo + name (new
+  Settings fields), generation date, executive summary of all rounds,
+  grouped findings with colored type badges, evidence quote bars, running
+  footer with page numbers.
+- **Consensus/divergence vocabulary** everywhere (report, analysis tab,
+  phones): Proposals · Points of consensus · Points of divergence ·
+  Concerns raised · Open questions · Minority positions · Emerging ideas;
+  the AI prompts now actively hunt for conflicts within and between tables,
+  naming both sides.
+- **Per-assembly AI instructions** (wizard + Overview) appended to the global
+  admin instructions.
+- Settings shows only the selected transcription provider's fields.
+- **Deleting an assembly now deletes its audio files** (chunks, canonical
+  audio, transcripts, exports) along with the database records.
+
 ### Reports round — 2026-08-24 (v0.3.0)
 
 - **PDF reports** with the organization logo on the header (logo uploadable in

@@ -66,6 +66,8 @@ DEFAULTS = {
     # appended to the built-in analysis prompts (tone, focus areas, glossary);
     # the JSON output contract and evidence rules stay protected
     "analysis_extra_instructions": "",
+    # shown with the logo on PDF report headers/footers
+    "organization_name": "",
 }
 
 # reads of the new split keys fall back to the pre-split stored values
@@ -140,6 +142,7 @@ def key_hint(store: ConfigStore, key: str) -> str:
 
 def providers_summary(store: ConfigStore) -> dict:
     return {
+        "organization_name": get_setting(store, "organization_name"),
         "stt": {
             "provider": get_setting(store, "stt_provider"),
             "live_enabled": get_setting(store, "stt_live_enabled") == "1",

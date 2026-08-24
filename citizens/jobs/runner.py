@@ -4,6 +4,11 @@ Jobs live in SQLite; the runner polls for due work, executes handlers in a
 worker thread (they use sync SQLAlchemy + subprocesses), and applies
 exponential backoff on failure. On startup, stale RUNNING jobs (from a crash
 or restart) are recovered to RETRY.
+
+CONTRACT: handlers run inside ONE session whose transaction takes SQLite's
+single write lock (BEGIN IMMEDIATE). Handlers MUST session.commit() right
+before any long external call (ffmpeg, STT/LLM HTTP) — a transaction held
+across those starves every API request into 500s after busy_timeout.
 """
 
 import asyncio

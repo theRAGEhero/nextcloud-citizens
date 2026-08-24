@@ -36,6 +36,7 @@ def create_assembly(session: Session, user_id: str, data: schemas.AssemblyCreate
         recording_mode=data.recording_mode,
         expected_participants=data.expected_participants,
         default_table_count=data.default_table_count,
+        analysis_instructions=data.analysis_instructions,
         created_by=user_id,
     )
     for position, round_in in enumerate(data.rounds, start=1):

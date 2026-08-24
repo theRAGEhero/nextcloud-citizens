@@ -17,6 +17,7 @@ const language = ref('en')
 const recordingMode = ref<'orchestrated' | 'independent'>('orchestrated')
 const expectedParticipants = ref(50)
 const tableCount = ref(10)
+const analysisInstructions = ref('')
 const rounds = ref<RoundIn[]>([{ title: 'Round 1', question: '', duration_minutes: 30 }])
 
 function addRound(): void {
@@ -49,6 +50,7 @@ async function submit(): Promise<void> {
 			recording_mode: recordingMode.value,
 			expected_participants: expectedParticipants.value,
 			default_table_count: tableCount.value,
+			analysis_instructions: analysisInstructions.value.trim(),
 			rounds: rounds.value,
 		})
 		emit('created', created.id, created.invites)
@@ -112,6 +114,17 @@ async function submit(): Promise<void> {
 						</span>
 					</label>
 				</div>
+			</div>
+			<div class="cz-field">
+				<label>AI analysis instructions for this assembly (optional)</label>
+				<textarea
+					v-model="analysisInstructions"
+					rows="2"
+					placeholder="E.g. This assembly is about urban mobility. 'PUMS' means the city's mobility plan."></textarea>
+				<span class="cz-muted" style="font-size: 12.5px">
+					Given to the AI when analyzing this assembly's discussions — topic context,
+					local glossary, focus areas.
+				</span>
 			</div>
 			<div class="cz-fieldgrid">
 				<div class="cz-field">

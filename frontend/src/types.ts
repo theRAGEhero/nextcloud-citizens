@@ -22,6 +22,7 @@ export interface Assembly {
 	recording_mode: 'orchestrated' | 'independent'
 	expected_participants: number
 	default_table_count: number
+	analysis_instructions: string
 	created_by: string
 	created_at: string
 }
@@ -90,6 +91,7 @@ export interface MonitorTable {
 }
 
 export interface ProvidersSummary {
+	organization_name: string
 	stt: {
 		provider: 'mistral' | 'deepgram'
 		live_enabled: boolean

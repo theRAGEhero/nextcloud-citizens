@@ -58,6 +58,13 @@ function isGoneError(error: unknown): boolean {
 	return error instanceof RecorderApiError && [401, 403, 404, 410].includes(error.status)
 }
 
+/** Network failures and server-side hiccups (busy DB, restarts, rate limits)
+ * are worth retrying; only definitive rejections are not. */
+function isTransientError(error: unknown): boolean {
+	if (!(error instanceof RecorderApiError)) return true // fetch/network failure
+	return error.status >= 500 || error.status === 429
+}
+
 export class RecorderEngine {
 	state: EngineState = reactive({
 		phase: 'idle',
@@ -163,6 +170,20 @@ export class RecorderEngine {
 
 	retryNow(): void {
 		this.retryDelay = RETRY_BASE_MS
+		this.kickUploader()
+	}
+
+	/** Restart synchronization after a failure (recording already stopped;
+	 * every chunk is still local — this can never lose audio). */
+	retrySync(): void {
+		if (this.totalChunks === null) return
+		this.state.error = ''
+		this.state.errorKind = ''
+		this.state.phase = 'syncing'
+		this.retryDelay = RETRY_BASE_MS
+		this.stopMonitors()
+		this.startMonitors()
+		clientLog('info', 'sync_retry_requested')
 		this.kickUploader()
 	}
 
@@ -350,27 +371,46 @@ export class RecorderEngine {
 			this.state.error = 'No audio was captured'
 			return
 		}
+		// a busy server (transcription running, restart, rate limit) must never
+		// dead-end a finished recording — retry with backoff for up to ~5 min
+		const deadline = Date.now() + 5 * 60_000
 		try {
-			let result = await recorderApi.complete(this.token, this.state.recordingId, this.totalChunks)
-			// server-detected gaps: resend those chunks from local storage, then retry
-			while (result.missing_sequences.length > 0) {
-				clientLog('warn', 'server_missing_chunks', { missing: result.missing_sequences.length })
-				const chunks = await idb.chunksFor(this.state.recordingId)
-				for (const seqNumber of result.missing_sequences) {
-					const chunk = chunks.find((c) => c.seq === seqNumber)
-					if (!chunk) throw new Error(`Chunk ${seqNumber} is missing locally too`)
-					await recorderApi.uploadChunk(
-						this.token, this.state.recordingId, chunk.seq, chunk.blob, chunk.sha256,
-					)
+			for (;;) {
+				try {
+					let result = await recorderApi.complete(this.token, this.state.recordingId, this.totalChunks)
+					// server-detected gaps: resend those chunks from local storage, then retry
+					while (result.missing_sequences.length > 0) {
+						clientLog('warn', 'server_missing_chunks', { missing: result.missing_sequences.length })
+						const chunks = await idb.chunksFor(this.state.recordingId)
+						for (const seqNumber of result.missing_sequences) {
+							const chunk = chunks.find((c) => c.seq === seqNumber)
+							if (!chunk) throw new Error(`Chunk ${seqNumber} is missing locally too`)
+							await recorderApi.uploadChunk(
+								this.token, this.state.recordingId, chunk.seq, chunk.blob, chunk.sha256,
+							)
+						}
+						result = await recorderApi.complete(this.token, this.state.recordingId, this.totalChunks)
+					}
+					this.state.uploadOnline = true
+					await this.pollUntilProcessed()
+					return
+				} catch (error) {
+					if (!isGoneError(error) && isTransientError(error) && Date.now() < deadline) {
+						this.state.uploadOnline = false
+						clientLog('warn', 'sync_retrying', {
+							error: String(error).slice(0, 160), delayMs: this.retryDelay,
+						})
+						await this.idleWait(this.retryDelay)
+						this.retryDelay = Math.min(this.retryDelay * 2, RETRY_MAX_MS)
+						continue
+					}
+					this.state.error = error instanceof Error ? error.message : String(error)
+					this.state.errorKind = isGoneError(error) ? 'gone' : 'transient'
+					this.state.phase = 'failed'
+					clientLog('error', 'sync_failed', { error: this.state.error.slice(0, 200) })
+					return
 				}
-				result = await recorderApi.complete(this.token, this.state.recordingId, this.totalChunks)
 			}
-			await this.pollUntilProcessed()
-		} catch (error) {
-			this.state.error = error instanceof Error ? error.message : String(error)
-			this.state.errorKind = isGoneError(error) ? 'gone' : 'transient'
-			this.state.phase = 'failed'
-			clientLog('error', 'sync_failed', { error: this.state.error.slice(0, 200) })
 		} finally {
 			this.stopMonitors()
 		}
@@ -383,19 +423,32 @@ export class RecorderEngine {
 			'AUDIO_READY', 'TRANSCRIBING', 'TRANSCRIBED', 'TRANSCRIPTION_FAILED',
 			'ANALYZING', 'READY_FOR_REVIEW', 'REVIEWED', 'ANALYSIS_FAILED',
 		])
-		for (let i = 0; i < 120; i += 1) {
-			const status = await recorderApi.recordingStatus(this.token, this.state.recordingId)
-			this.state.serverState = status.state
-			if (SUCCESS.has(status.state) || status.state === 'AUDIO_INVALID') {
-				this.state.phase = SUCCESS.has(status.state) ? 'done' : 'failed'
-				if (SUCCESS.has(status.state)) {
-					clientLog('info', 'recording_synchronized', { recordingId: this.state.recordingId })
-					await this.markServerComplete()
-				} else {
-					this.state.error = `Server could not validate the audio (${status.error_code})`
-					clientLog('error', 'audio_invalid', { errorCode: status.error_code })
+		let failedSince = 0
+		for (let i = 0; i < 150; i += 1) {
+			try {
+				const status = await recorderApi.recordingStatus(this.token, this.state.recordingId)
+				failedSince = 0
+				this.state.uploadOnline = true
+				this.state.serverState = status.state
+				if (SUCCESS.has(status.state) || status.state === 'AUDIO_INVALID') {
+					this.state.phase = SUCCESS.has(status.state) ? 'done' : 'failed'
+					if (SUCCESS.has(status.state)) {
+						clientLog('info', 'recording_synchronized', { recordingId: this.state.recordingId })
+						await this.markServerComplete()
+					} else {
+						this.state.error = `Server could not validate the audio (${status.error_code})`
+						clientLog('error', 'audio_invalid', { errorCode: status.error_code })
+					}
+					return
 				}
-				return
+			} catch (error) {
+				// a blip (busy server, dropped connection) must not fail a
+				// recording whose chunks are already uploaded — keep polling
+				if (isGoneError(error)) throw error
+				this.state.uploadOnline = false
+				if (failedSince === 0) failedSince = Date.now()
+				if (Date.now() - failedSince > 5 * 60_000) throw error
+				clientLog('warn', 'status_poll_failed', { error: String(error).slice(0, 120) })
 			}
 			await new Promise((resolve) => setTimeout(resolve, 2000))
 		}

@@ -2,6 +2,7 @@
 import { mdiDownloadOutline, mdiFileDocumentOutline } from '@mdi/js'
 import { onMounted, ref } from 'vue'
 import SvgIcon from '../../components/ui/SvgIcon.vue'
+import { groupByType, TYPE_LABELS } from '../../labels'
 import { recorderApi, type JoinResult, type PublishedReport } from '../api'
 
 /*
@@ -17,12 +18,6 @@ const report = ref<PublishedReport | null>(null)
 const error = ref('')
 const downloading = ref(false)
 const downloadNote = ref('')
-
-const TYPE_LABELS: Record<string, string> = {
-	proposal: 'Proposal', agreement: 'Agreement', disagreement: 'Disagreement',
-	concern: 'Concern', question: 'Open question', minority_position: 'Minority position',
-	new_idea: 'New idea',
-}
 
 onMounted(async () => {
 	try {
@@ -86,15 +81,21 @@ async function downloadPdf(): Promise<void> {
 						<p style="font-size: 14.5px; margin: 0 0 10px">{{ round.summary }}</p>
 					</template>
 
-					<div v-for="finding in round.cross_table" :key="finding.id" style="margin: 0 0 12px">
-						<p style="font-weight: 700; font-size: 14.5px; margin: 0">
-							{{ TYPE_LABELS[finding.type] ?? finding.type }}: {{ finding.title }}
+					<template v-for="group in groupByType(round.cross_table)" :key="group.type">
+						<p
+							class="rc-eyebrow"
+							style="margin: 8px 0 4px"
+							:style="{ color: group.type === 'disagreement' ? 'var(--rc-amber)' : 'var(--rc-blue)' }">
+							{{ group.label }}
 						</p>
-						<p v-if="finding.mentioned_table_count" class="rc-muted" style="font-size: 12.5px; margin: 1px 0">
-							Mentioned at {{ finding.mentioned_table_count }} table(s)
-						</p>
-						<p style="font-size: 14px; margin: 3px 0 0">{{ finding.summary }}</p>
-					</div>
+						<div v-for="finding in group.findings" :key="finding.id" style="margin: 0 0 12px">
+							<p style="font-weight: 700; font-size: 14.5px; margin: 0">{{ finding.title }}</p>
+							<p v-if="finding.mentioned_table_count" class="rc-muted" style="font-size: 12.5px; margin: 1px 0">
+								Mentioned at {{ finding.mentioned_table_count }} table(s)
+							</p>
+							<p style="font-size: 14px; margin: 3px 0 0">{{ finding.summary }}</p>
+						</div>
+					</template>
 
 					<template v-for="table in round.tables" :key="table.table_number">
 						<template v-if="table.summary || table.findings.length">

@@ -109,3 +109,16 @@ def test_logo_roundtrip(client):
 
     assert client.delete("/api/v1/admin/logo").status_code == 204
     assert client.get("/api/v1/admin/logo").status_code == 404
+
+
+def test_delete_assembly_purges_stored_audio(client, settings_env):
+    assembly = _make_assembly(client, "TEST Purge")
+    root = settings_env.app_persistent_storage
+    for subdir in ("recordings", "assembled"):
+        target = root / subdir / assembly["id"] / "x"
+        target.mkdir(parents=True)
+        (target / "chunk.bin").write_bytes(b"audio")
+
+    assert client.delete(f"/api/v1/assemblies/{assembly['id']}").status_code in (200, 204)
+    assert not (root / "recordings" / assembly["id"]).exists()
+    assert not (root / "assembled" / assembly["id"]).exists()

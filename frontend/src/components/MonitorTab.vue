@@ -93,6 +93,32 @@ async function run(action: () => Promise<unknown>, note = ''): Promise<void> {
 	}
 }
 
+// after ending a round, the obvious next step is offered directly instead of
+// hiding behind the round dropdown
+const nextUp = computed(() => {
+	if (!monitor.value) return null
+	if (!['ENDED', 'PROCESSING', 'READY_FOR_REVIEW'].includes(monitor.value.status)) return null
+	const rounds = props.assembly.rounds
+	const index = rounds.findIndex((r) => r.id === roundId.value)
+	if (index < 0) return null
+	return rounds.slice(index + 1).find((r) => r.status === 'NOT_STARTED') ?? null
+})
+
+const allRoundsDone = computed(
+	() =>
+		!!monitor.value &&
+		['ENDED', 'PROCESSING', 'READY_FOR_REVIEW'].includes(monitor.value.status) &&
+		props.assembly.rounds.length > 0 &&
+		props.assembly.rounds.every((r) => r.status !== 'NOT_STARTED' && r.status !== 'ACTIVE'),
+)
+
+async function startNextRound(): Promise<void> {
+	if (!nextUp.value) return
+	roundId.value = nextUp.value.id
+	await poll()
+	startRound()
+}
+
 function startRound(): void {
 	// orchestrated: warn (never block) when tables haven't armed yet
 	if (
@@ -176,6 +202,32 @@ function pendingChunks(table: MonitorTable): number {
 <template>
 	<div>
 		<div v-if="error" class="cz-error">{{ error }}</div>
+
+		<div
+			v-if="nextUp && monitor?.recording_mode === 'orchestrated'"
+			class="cz-card cz-nextstep">
+			<div>
+				<strong>This round has finished.</strong>
+				<span class="cz-muted" style="display: block; font-size: 13px; margin-top: 2px">
+					Armed tables will start recording Round {{ nextUp.position }} automatically.
+				</span>
+			</div>
+			<CzButton variant="primary" :icon="mdiPlay" :disabled="busy" @click="startNextRound">
+				Start Round {{ nextUp.position }}{{ nextUp.title ? ` — ${nextUp.title}` : '' }}
+			</CzButton>
+		</div>
+
+		<div
+			v-else-if="allRoundsDone"
+			class="cz-card cz-nextstep">
+			<div>
+				<strong>All rounds are done.</strong>
+				<span class="cz-muted" style="display: block; font-size: 13px; margin-top: 2px">
+					Review the findings in the Analysis tab, then publish the report to the
+					table phones from the Report tab.
+				</span>
+			</div>
+		</div>
 
 		<div class="cz-countbar">
 			<select v-model="roundId" style="min-width: 200px">

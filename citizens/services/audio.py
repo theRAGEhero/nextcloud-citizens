@@ -56,6 +56,11 @@ def assemble_recording(session: Session, recording: Recording) -> None:
     canonical.parent.mkdir(parents=True, exist_ok=True)
 
     chunks = sorted(recording.chunks, key=lambda c: c.sequence_number)
+    # release the DB write lock before file/ffmpeg work: the job session
+    # otherwise holds SQLite's single writer slot for the whole assembly,
+    # 500-ing every API request after busy_timeout (expire_on_commit=False
+    # keeps the loaded chunk rows usable)
+    session.commit()
     digest = hashlib.sha256()
     with open(raw_path, "wb") as raw:
         for chunk in chunks:

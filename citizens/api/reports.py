@@ -11,7 +11,7 @@ from citizens.db.session import get_db
 from citizens.security.identity import CurrentUser
 from citizens.services.assemblies import get_owned_assembly
 from citizens.services.audit import record_audit_event
-from citizens.services.branding import logo_path
+from citizens.services.branding import logo_path, organization_name
 from citizens.services.report import build_report, render_markdown
 from citizens.services.report_pdf import render_pdf
 
@@ -63,7 +63,9 @@ def assembly_report_pdf(
 ):
     assembly = get_owned_assembly(session, assembly_id, user)
     pdf = render_pdf(
-        build_report(session, assembly, include_drafts=include_drafts), logo_path()
+        build_report(session, assembly, include_drafts=include_drafts),
+        logo_path(),
+        organization_name(),
     )
     return Response(
         pdf,

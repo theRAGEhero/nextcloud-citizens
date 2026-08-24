@@ -2,6 +2,7 @@
 import { mdiCheck, mdiChevronDown, mdiChevronUp, mdiClose, mdiPencilOutline } from '@mdi/js'
 import { ref } from 'vue'
 import { api } from '../api'
+import { TYPE_LABELS } from '../labels'
 import type { FindingData } from '../types'
 import CzButton from './ui/CzButton.vue'
 import CzStatusPill from './ui/CzStatusPill.vue'
@@ -71,7 +72,7 @@ function formatTime(seconds: number): string {
 				<div style="min-width: 0">
 					<div class="cz-row" style="gap: 6px; margin-bottom: 4px">
 						<span class="cz-pill" :class="`cz-pill--${TYPE_TONES[finding.type] ?? 'gray'}`" style="text-transform: none">
-							{{ finding.type.replaceAll('_', ' ') }}
+							{{ TYPE_LABELS[finding.type] ?? finding.type.replaceAll('_', ' ') }}
 						</span>
 						<span v-if="finding.scope === 'round' && finding.mentioned_table_count" class="cz-pill cz-pill--gray" style="text-transform: none">
 							Mentioned at {{ finding.mentioned_table_count }} table(s)

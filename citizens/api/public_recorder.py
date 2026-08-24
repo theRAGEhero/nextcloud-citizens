@@ -147,13 +147,13 @@ def published_report(recorder_session: RecorderSess, session: DB):
 def published_report_pdf(recorder_session: RecorderSess, session: DB):
     from fastapi.responses import Response
 
-    from citizens.services.branding import logo_path
+    from citizens.services.branding import logo_path, organization_name
     from citizens.services.report_pdf import render_pdf
 
     assembly, report = _published_report(session, recorder_session)
     filename = f"{assembly.name[:40].replace(' ', '-')}-report.pdf"
     return Response(
-        render_pdf(report, logo_path()),
+        render_pdf(report, logo_path(), organization_name()),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

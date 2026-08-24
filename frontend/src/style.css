@@ -673,6 +673,16 @@
 
 #citizens-app .cz-qr-copy:hover { background: var(--cz-bg-hover); }
 
+#citizens-app .cz-nextstep {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 14px;
+	flex-wrap: wrap;
+	border-left: 4px solid var(--cz-primary);
+	margin-bottom: 14px;
+}
+
 #citizens-app .cz-promptbox {
 	background: var(--cz-bg-dark);
 	border: 1px solid var(--cz-border);

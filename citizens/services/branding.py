@@ -48,3 +48,15 @@ def delete_logo() -> bool:
         return False
     existing.unlink(missing_ok=True)
     return True
+
+
+def organization_name() -> str:
+    """Admin-configured organization name for report branding ('' when the
+    config store is unreachable — branding must never break a report)."""
+    try:
+        from citizens.services import provider_config
+
+        store = provider_config.default_store()
+        return provider_config.get_setting(store, "organization_name")
+    except Exception:
+        return ""

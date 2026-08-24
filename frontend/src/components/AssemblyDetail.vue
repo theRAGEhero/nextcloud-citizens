@@ -113,7 +113,7 @@ async function deleteAssembly(): Promise<void> {
 				</button>
 			</div>
 
-			<OverviewTab v-if="tab === 'overview'" :assembly="assembly" @navigate="(t: Tab) => (tab = t)" />
+			<OverviewTab v-if="tab === 'overview'" :assembly="assembly" @navigate="(t: Tab) => (tab = t)" @changed="reload" />
 			<RoundsTab v-else-if="tab === 'rounds'" :assembly="assembly" @changed="reload" />
 			<ParticipantsTab v-else-if="tab === 'participants'" :assembly-id="assembly.id" @changed="reload" />
 			<TablesTab v-else-if="tab === 'tables'" :assembly="assembly" />
@@ -130,7 +130,7 @@ async function deleteAssembly(): Promise<void> {
 		<CzConfirm
 			v-if="confirmDelete && assembly"
 			title="Delete assembly?"
-			:message="`“${assembly.name}” and all of its rounds, recordings and transcripts will be permanently deleted.`"
+			:message="`“${assembly.name}” and all of its rounds, transcripts and reports will be permanently deleted — including every audio file stored on the server.`"
 			confirm-label="Delete assembly"
 			@confirm="deleteAssembly"
 			@cancel="confirmDelete = false" />

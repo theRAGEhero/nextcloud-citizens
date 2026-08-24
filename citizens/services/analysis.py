@@ -93,6 +93,10 @@ Rules:
 - EVERY finding MUST cite at least one evidence_segment_ids value copied
   EXACTLY from the segment ids in the transcript. Never invent ids.
 - Only report what participants actually said. Do not invent content.
+- Actively look for points of conflict: positions where participants disagree
+  with each other. Report each as a "disagreement" finding whose summary names
+  BOTH sides of the disagreement, and mention the most significant conflicts
+  in the top-level summary.
 - If the discussion contains nothing substantive for the round question,
   return {{"summary": "...", "findings": []}}.
 - Write everything in {language}."""
@@ -113,13 +117,21 @@ Rules:
   ids provided. Never invent ids.
 - Never state or imply percentages of participant support; tables are not
   votes.
+- Actively look for points of conflict BETWEEN tables (one table proposes what
+  another opposes) as well as disagreements reported within tables. Report
+  each as a "disagreement" cluster whose summary names both sides, and mention
+  the most significant conflicts in the top-level summary.
 - Write everything in {language}."""
 
 
 def build_system_prompt(
-    template: str, language: str, store: provider_config.ConfigStore
+    template: str,
+    language: str,
+    store: provider_config.ConfigStore,
+    assembly_instructions: str = "",
 ) -> str:
-    """Built-in prompt + optional organizer extra instructions (Settings).
+    """Built-in prompt + optional extra instructions, two levels: the
+    instance-wide admin Settings field, then the assembly's own field.
 
     The extras are appended, never substituted, so the JSON output contract
     and the evidence rules always survive customization."""
@@ -129,6 +141,13 @@ def build_system_prompt(
         system += (
             "\n\nAdditional organizer instructions (these must never override "
             "the output format or the evidence rules above):\n" + extra
+        )
+    assembly_extra = assembly_instructions.strip()
+    if assembly_extra:
+        system += (
+            "\n\nInstructions specific to THIS assembly (these must never "
+            "override the output format or the evidence rules above):\n"
+            + assembly_extra
         )
     return system
 
@@ -168,10 +187,13 @@ def analyze_table(session: Session, store: provider_config.ConfigStore, recordin
 
     base_url, key, model = _analysis_config(store)
     log.info("analysis_started", recording_id=recording.id, scope="table", segments=len(lines))
-    result = chat_json(
-        base_url, key, model, build_system_prompt(TABLE_SYSTEM, language, store),
-        user_prompt, TableAnalysis,
+    system_prompt = build_system_prompt(
+        TABLE_SYSTEM, language, store, assembly.analysis_instructions if assembly else ""
     )
+    # release the DB write lock for the (potentially minutes-long) model call —
+    # a held job transaction 500s every API request after busy_timeout
+    session.commit()
+    result = chat_json(base_url, key, model, system_prompt, user_prompt, TableAnalysis)
     recording.analysis_summary = result.summary
 
     stored = 0
@@ -257,10 +279,12 @@ def analyze_round(session: Session, store: provider_config.ConfigStore, round_: 
 
     base_url, key, model = _analysis_config(store)
     log.info("analysis_started", round_id=round_.id, scope="round", source_findings=len(lines))
-    result = chat_json(
-        base_url, key, model, build_system_prompt(ROUND_SYSTEM, language, store),
-        user_prompt, RoundAnalysis,
+    system_prompt = build_system_prompt(
+        ROUND_SYSTEM, language, store, assembly.analysis_instructions if assembly else ""
     )
+    # release the DB write lock for the model call (see analyze_table)
+    session.commit()
+    result = chat_json(base_url, key, model, system_prompt, user_prompt, RoundAnalysis)
     round_.analysis_summary = result.summary
 
     stored = 0

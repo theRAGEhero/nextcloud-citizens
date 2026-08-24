@@ -49,3 +49,13 @@ def device_log_path(root: Path, session_id: str) -> Path:
     """Per-recorder-session shipped client logs (JSONL). session_id is a
     server-generated UUID, never client input."""
     return root / "logs" / "devices" / f"{session_id}.jsonl"
+
+
+def purge_assembly_storage(root: Path, assembly_id: str) -> None:
+    """Remove every stored file of a deleted assembly (audio chunks, assembled
+    canonical audio, transcripts, exports). assembly_id is a server-generated
+    UUID, never client input."""
+    import shutil
+
+    for subdir in ("recordings", "assembled", "transcripts", "exports"):
+        shutil.rmtree(root / subdir / assembly_id, ignore_errors=True)
