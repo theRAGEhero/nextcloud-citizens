@@ -140,6 +140,12 @@ def build_report(session: Session, assembly: Assembly, include_drafts: bool = Fa
         ),
         "methodology_note": METHODOLOGY_NOTE,
         "include_drafts": include_drafts,
+        # when set, table phones can view/download this report
+        "published_at": (
+            assembly.report_published_at.isoformat()
+            if assembly.report_published_at
+            else None
+        ),
         "rounds": rounds_payload,
     }
 

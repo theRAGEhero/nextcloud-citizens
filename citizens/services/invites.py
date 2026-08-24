@@ -8,6 +8,7 @@ from citizens.config import get_settings
 from citizens.db.models import Assembly, RecorderInvite
 from citizens.db.models.base import utcnow
 from citizens.domain import schemas
+from citizens.security.invite_vault import decrypt_token, encrypt_token
 from citizens.security.recorder_tokens import generate_token, hash_token
 
 
@@ -20,11 +21,23 @@ def recorder_join_url(token: str) -> str:
     return f"{base}/index.php/apps/app_api/proxy/citizens/recorder.html#/join/{token}"
 
 
+def _invite_card(table_number: int, token: str) -> schemas.InviteGenerated:
+    url = recorder_join_url(token)
+    qr = segno.make(url, error="m")
+    return schemas.InviteGenerated(
+        table_number=table_number,
+        url=url,
+        # omitsize → viewBox instead of fixed px size, so CSS can
+        # scale the QR without clipping it
+        qr_svg=qr.svg_inline(scale=4, dark="#000000", omitsize=True),
+    )
+
+
 def generate_invites(session: Session, assembly: Assembly) -> list[schemas.InviteGenerated]:
     """Create fresh invites for every table number, revoking any active ones.
 
-    Raw tokens are returned ONCE here (for the printable QR sheet) and never
-    stored — only their SHA-256 hash is persisted.
+    Join verification uses only the SHA-256 hash; the raw token is also kept
+    encrypted with the app secret so the QR sheet can be re-viewed anytime.
     """
     table_numbers = sorted(
         {table.number for round_ in assembly.rounds for table in round_.tables}
@@ -38,21 +51,35 @@ def generate_invites(session: Session, assembly: Assembly) -> list[schemas.Invit
     for number in table_numbers:
         token = generate_token()
         session.add(
-            RecorderInvite(assembly_id=assembly.id, table_number=number, token_hash=hash_token(token))
-        )
-        url = recorder_join_url(token)
-        qr = segno.make(url, error="m")
-        generated.append(
-            schemas.InviteGenerated(
+            RecorderInvite(
+                assembly_id=assembly.id,
                 table_number=number,
-                url=url,
-                # omitsize → viewBox instead of fixed px size, so CSS can
-                # scale the QR without clipping it
-                qr_svg=qr.svg_inline(scale=4, dark="#000000", omitsize=True),
+                token_hash=hash_token(token),
+                token_encrypted=encrypt_token(token),
             )
         )
+        generated.append(_invite_card(number, token))
     session.flush()
     return generated
+
+
+def invite_links(session: Session, assembly: Assembly) -> list[schemas.InviteGenerated]:
+    """Re-materialize the QR sheet for the currently active invites.
+
+    Invites issued before token storage existed (or under a different app
+    secret) cannot be decrypted and are skipped — the UI falls back to a
+    regenerate hint when the list comes back shorter than the active count.
+    """
+    cards: list[schemas.InviteGenerated] = []
+    for invite in _active_invites(session, assembly.id):
+        if not invite.token_encrypted:
+            continue
+        token = decrypt_token(invite.token_encrypted)
+        if token is None:
+            continue
+        cards.append(_invite_card(invite.table_number, token))
+    cards.sort(key=lambda card: card.table_number)
+    return cards
 
 
 def list_invites(session: Session, assembly_id: str) -> list[schemas.InviteOut]:

@@ -125,6 +125,10 @@ export const api = {
 			'GET',
 			`/api/v1/assemblies/${assemblyId}/report?include_drafts=${includeDrafts}`,
 		),
+	publishReport: (assemblyId: string) =>
+		request<{ published_at: string }>('POST', `/api/v1/assemblies/${assemblyId}/report/publish`),
+	unpublishReport: (assemblyId: string) =>
+		request<void>('DELETE', `/api/v1/assemblies/${assemblyId}/report/publish`),
 
 	getTranscript: (recordingId: string) =>
 		request<TranscriptData>('GET', `/api/v1/recordings/${recordingId}/transcript`),
@@ -136,8 +140,14 @@ export const api = {
 			`/api/v1/assemblies/${assemblyId}/tables/${tableNumber}/device-logs?tail=${tail}`,
 		),
 
+	uploadLogo: (base64: string) =>
+		request<void>('PUT', '/api/v1/admin/logo', { data: base64 }),
+	deleteLogo: () => request<void>('DELETE', '/api/v1/admin/logo'),
+
 	listInvites: (assemblyId: string) =>
 		request<Invite[]>('GET', `/api/v1/assemblies/${assemblyId}/invites`),
+	inviteLinks: (assemblyId: string) =>
+		request<InviteGenerated[]>('GET', `/api/v1/assemblies/${assemblyId}/invites/links`),
 	generateInvites: (assemblyId: string) =>
 		request<InviteGenerated[]>('POST', `/api/v1/assemblies/${assemblyId}/invites/generate`),
 	revokeInvites: (assemblyId: string) =>

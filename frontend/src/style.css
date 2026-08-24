@@ -422,6 +422,14 @@
 #citizens-app .cz-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; min-width: 0; }
 #citizens-app .cz-field label { font-size: 13px; font-weight: 600; color: var(--cz-text-muted); }
 
+/* inputs fill their field — browser default widths are far too narrow */
+#citizens-app .cz-field input:not([type='checkbox']):not([type='radio']),
+#citizens-app .cz-field textarea,
+#citizens-app .cz-field select {
+	width: 100%;
+	max-width: 640px;
+}
+
 #citizens-app .cz-fieldgrid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -664,6 +672,21 @@
 }
 
 #citizens-app .cz-qr-copy:hover { background: var(--cz-bg-hover); }
+
+#citizens-app .cz-promptbox {
+	background: var(--cz-bg-dark);
+	border: 1px solid var(--cz-border);
+	border-radius: 8px;
+	padding: 10px 12px;
+	font-size: 11.5px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+	max-height: 260px;
+	overflow-y: auto;
+	color: var(--cz-text-muted);
+	margin: 0;
+}
 
 /* ================= transcript conversation ================= */
 

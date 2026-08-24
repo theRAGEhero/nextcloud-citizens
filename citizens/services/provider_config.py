@@ -63,6 +63,9 @@ DEFAULTS = {
     "analysis_base_url": "https://api.mistral.ai/v1",
     "analysis_model": "mistral-large-latest",
     "analysis_enabled": "1",
+    # appended to the built-in analysis prompts (tone, focus areas, glossary);
+    # the JSON output contract and evidence rules stay protected
+    "analysis_extra_instructions": "",
 }
 
 # reads of the new split keys fall back to the pre-split stored values
@@ -156,6 +159,7 @@ def providers_summary(store: ConfigStore) -> dict:
             "configured": bool(store.get_value("analysis_api_key")),
             "key_hint": key_hint(store, "analysis_api_key"),
             "enabled": get_setting(store, "analysis_enabled") == "1",
+            "extra_instructions": get_setting(store, "analysis_extra_instructions"),
         },
     }
 

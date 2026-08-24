@@ -28,13 +28,25 @@ def list_invites(assembly_id: str, user: CurrentUser, session: DB):
     return invite_svc.list_invites(session, assembly_id)
 
 
+@router.get(
+    "/assemblies/{assembly_id}/invites/links",
+    response_model=list[schemas.InviteGenerated],
+)
+def invite_links(assembly_id: str, user: CurrentUser, session: DB):
+    """Re-materialized QR sheet for the active invites (tokens are stored
+    encrypted with the app secret; invites from before that existed are
+    omitted and need a regenerate)."""
+    assembly = get_owned_assembly(session, assembly_id, user)
+    return invite_svc.invite_links(session, assembly)
+
+
 @router.post(
     "/assemblies/{assembly_id}/invites/generate",
     response_model=list[schemas.InviteGenerated],
     status_code=201,
 )
 def generate_invites(assembly_id: str, user: CurrentUser, session: DB):
-    """Returns raw invite URLs + QR SVGs exactly once; only hashes are stored.
+    """Returns fresh invite URLs + QR SVGs.
     Any previously active invites for this assembly are revoked."""
     assembly = get_owned_assembly(session, assembly_id, user)
     generated = invite_svc.generate_invites(session, assembly)

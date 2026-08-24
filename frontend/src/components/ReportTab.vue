@@ -1,17 +1,46 @@
 <script setup lang="ts">
-import { mdiCodeJson, mdiDownloadOutline, mdiFileDocumentOutline } from '@mdi/js'
+import {
+	mdiCellphoneLink,
+	mdiCodeJson,
+	mdiDownloadOutline,
+	mdiFileDocumentOutline,
+	mdiFilePdfBox,
+} from '@mdi/js'
 import { onMounted, ref, watch } from 'vue'
 import { api, BASE } from '../api'
 import type { AssemblyDetail, ReportData } from '../types'
 import CzButton from './ui/CzButton.vue'
+import CzConfirm from './ui/CzConfirm.vue'
 import CzEmptyState from './ui/CzEmptyState.vue'
 import CzSkeleton from './ui/CzSkeleton.vue'
+import { toast } from './ui/toast'
 
 const props = defineProps<{ assembly: AssemblyDetail }>()
 
 const report = ref<ReportData | null>(null)
 const error = ref('')
 const includeDrafts = ref(false)
+const confirmPublish = ref(false)
+const publishing = ref(false)
+
+async function togglePublish(): Promise<void> {
+	confirmPublish.value = false
+	publishing.value = true
+	try {
+		if (report.value?.published_at) {
+			await api.unpublishReport(props.assembly.id)
+			toast('Report is no longer visible on table phones')
+		} else {
+			await api.publishReport(props.assembly.id)
+			toast('Report published — table phones can now view and download it')
+		}
+		await reload()
+	} catch (err) {
+		error.value = err instanceof Error ? err.message : String(err)
+	} finally {
+		publishing.value = false
+	}
+}
 
 const TYPE_LABELS: Record<string, string> = {
 	proposal: 'Proposal', agreement: 'Agreement', disagreement: 'Disagreement',
@@ -34,6 +63,13 @@ watch(includeDrafts, reload)
 function downloadMarkdown(): void {
 	window.open(
 		`${BASE}/api/v1/assemblies/${props.assembly.id}/report.md?include_drafts=${includeDrafts.value}`,
+		'_blank',
+	)
+}
+
+function downloadPdf(): void {
+	window.open(
+		`${BASE}/api/v1/assemblies/${props.assembly.id}/report.pdf?include_drafts=${includeDrafts.value}`,
 		'_blank',
 	)
 }
@@ -66,8 +102,38 @@ const hasContent = () =>
 				Include unreviewed drafts (clearly marked)
 			</label>
 			<div class="cz-row">
+				<CzButton small :icon="mdiFilePdfBox" @click="downloadPdf">PDF</CzButton>
 				<CzButton small :icon="mdiDownloadOutline" @click="downloadMarkdown">Markdown</CzButton>
 				<CzButton small :icon="mdiCodeJson" @click="downloadJson">JSON</CzButton>
+			</div>
+		</div>
+
+		<div v-if="report" class="cz-card" style="margin-bottom: 16px">
+			<div class="cz-row cz-row--spread">
+				<div style="flex: 1; min-width: 240px">
+					<h3>
+						<template v-if="report.published_at">Published to table phones</template>
+						<template v-else>Not yet published to table phones</template>
+					</h3>
+					<p class="cz-muted" style="margin: 4px 0 0; font-size: 13.5px">
+						<template v-if="report.published_at">
+							Recording phones can view this report and download the PDF
+							(approved findings and AI summaries only — drafts stay private).
+						</template>
+						<template v-else>
+							Publishing lets the recording phones view this report and download
+							the PDF. Only approved findings and AI summaries are shared.
+						</template>
+					</p>
+				</div>
+				<CzButton
+					small
+					:variant="report.published_at ? 'tertiary' : 'primary'"
+					:icon="mdiCellphoneLink"
+					:disabled="publishing"
+					@click="report.published_at ? togglePublish() : (confirmPublish = true)">
+					{{ report.published_at ? 'Unpublish' : 'Publish report to tables' }}
+				</CzButton>
 			</div>
 		</div>
 
@@ -161,5 +227,13 @@ const hasContent = () =>
 				{{ report.methodology_note }}
 			</p>
 		</template>
+
+		<CzConfirm
+			v-if="confirmPublish"
+			title="Publish report to table phones?"
+			message="Every table's recording phone will be able to view this report and download the PDF. Only approved findings and AI summaries are included — unreviewed drafts stay private. You can unpublish at any time."
+			confirm-label="Publish"
+			@confirm="togglePublish"
+			@cancel="confirmPublish = false" />
 	</div>
 </template>

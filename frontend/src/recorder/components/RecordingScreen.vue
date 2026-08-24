@@ -12,7 +12,7 @@ import { recorderApi, type JoinResult, type RoundInfo } from '../api'
 import { clearSynchronizedRecordings, RecorderEngine } from '../engine'
 
 const props = defineProps<{ session: JoinResult; round: RoundInfo }>()
-const emit = defineEmits<{ exit: []; nextRound: [round: RoundInfo] }>()
+const emit = defineEmits<{ exit: []; nextRound: [round: RoundInfo]; viewReport: [] }>()
 
 const engine = new RecorderEngine()
 const state = engine.state
@@ -57,6 +57,7 @@ const liveLines = ref<Array<{ t: number; text: string; speaker?: number | null }
 const liveChecked = ref(false)
 const captionsBox = ref<HTMLElement | null>(null)
 const nextRound = ref<RoundInfo | null>(null)
+const reportAvailable = ref(false)
 const qbarOpen = ref(false)
 const techOpen = ref(false)
 
@@ -82,6 +83,7 @@ function watchForNextRound(): void {
 	const poll = async () => {
 		try {
 			const status = await recorderApi.status(props.session.session_token)
+			reportAvailable.value = status.report_available ?? false
 			nextRound.value =
 				status.rounds.find((r) => r.status === 'ACTIVE' && !r.recorded_state && r.id !== props.round.id) ??
 				null
@@ -418,6 +420,9 @@ async function clearSynced(): Promise<void> {
 					style="margin-top: 0"
 					@click="emit('nextRound', nextRound)">
 					Start recording — Round {{ nextRound.position }}
+				</button>
+				<button v-if="reportAvailable" class="rc-btn rc-primary" @click="emit('viewReport')">
+					View assembly report
 				</button>
 				<button v-if="!clearedNote" class="rc-linkbtn" @click="clearSynced">
 					Clear synchronized audio from this phone

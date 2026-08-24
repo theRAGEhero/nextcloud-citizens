@@ -21,6 +21,15 @@ const confirmRevoke = ref(false)
 
 async function reload(): Promise<void> {
 	invites.value = await api.listInvites(props.assembly.id)
+	// tokens are stored encrypted server-side, so the sheet can always be
+	// re-materialized (invites predating that storage come back empty)
+	if (!generated.value.length && invites.value.some((i) => i.active)) {
+		try {
+			generated.value = await api.inviteLinks(props.assembly.id)
+		} catch {
+			/* older invites — the regenerate hint stays */
+		}
+	}
 }
 
 onMounted(() => {
@@ -83,8 +92,8 @@ const hasActive = () => invites.value.some((i) => i.active)
 				<div style="flex: 1; min-width: 240px">
 					<h3>Table recorder QR codes</h3>
 					<p class="cz-muted" style="margin: 4px 0 0; font-size: 13.5px">
-						One code per physical table. Links are shown <strong>only once</strong> after
-						generating — print the sheet right away. Regenerating revokes all previous codes.
+						One code per physical table. Codes can be re-viewed and re-printed here
+						anytime. <strong>Regenerating revokes all previous codes.</strong>
 					</p>
 				</div>
 				<div class="cz-row" style="flex-wrap: nowrap">
@@ -98,8 +107,8 @@ const hasActive = () => invites.value.some((i) => i.active)
 				</div>
 			</div>
 			<p v-if="invites.length && !generated.length" class="cz-muted" style="margin: 12px 0 0; font-size: 13px">
-				{{ invites.filter((i) => i.active).length }} of {{ invites.length }} table codes active.
-				Links are not retrievable after generation — regenerate to obtain new QR codes.
+				{{ invites.filter((i) => i.active).length }} of {{ invites.length }} table codes active,
+				but they were issued before re-viewing existed — regenerate to obtain new QR codes.
 			</p>
 		</div>
 

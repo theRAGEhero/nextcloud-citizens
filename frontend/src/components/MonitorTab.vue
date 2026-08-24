@@ -153,11 +153,18 @@ function speakerClass(speaker: string): string {
 	return `cz-convo__seg--s${((parseInt(match[1], 10) - 1) % 5) + 1}`
 }
 
+function humanAge(seconds: number): string {
+	if (seconds < 90) return `${seconds}s ago`
+	if (seconds < 90 * 60) return `${Math.round(seconds / 60)}m ago`
+	if (seconds < 48 * 3600) return `${Math.round(seconds / 3600)}h ago`
+	return `${Math.round(seconds / 86400)}d ago`
+}
+
 function deviceState(table: MonitorTable): { status: string; label: string } {
 	if (table.armed) return { status: 'CONNECTED', label: 'armed' }
 	if (table.device.connected) return { status: 'CONNECTED', label: 'connected' }
 	if (table.device.seconds_since_contact !== null)
-		return { status: 'STALE', label: `${table.device.seconds_since_contact}s ago` }
+		return { status: 'STALE', label: humanAge(table.device.seconds_since_contact) }
 	return { status: 'IDLE', label: 'no device' }
 }
 

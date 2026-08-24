@@ -4,6 +4,27 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Reports round — 2026-08-24 (v0.3.0)
+
+- **PDF reports** with the organization logo on the header (logo uploadable in
+  Settings, PNG/JPEG up to 1 MB), alongside Markdown and JSON.
+- **Publish report to tables**: a new button on the Report tab makes the
+  report (approved findings + AI summaries only — never drafts) visible on
+  the recording phones, which get a "View assembly report" screen with a
+  PDF download. Unpublish anytime.
+- **QR codes re-viewable anytime**: invite links are now stored encrypted
+  with the app secret, so the QR tab always shows the printable sheet again
+  (join verification still runs on hashes; a database dump alone reveals
+  nothing). Codes issued before this release still need one regenerate.
+- **Custom AI instructions**: Settings gains an "Additional analysis
+  instructions" field appended to the built-in prompts (shown read-only for
+  reference); the JSON output contract and mandatory evidence links cannot
+  be overridden.
+- Wizard and round form fields now stretch to full width; device ages on the
+  Live tab read "3m ago / 11h ago" instead of thousands of seconds.
+- Settings remains admin-only (enforced at the Nextcloud proxy; the nav item
+  hides for non-admins). Assemblies stay private per organizer account.
+
 ### Recorder polish round — 2026-08-24 (v0.2.0)
 
 - **Nextcloud-style recorder**: the phone recorder now uses the same light

@@ -7,12 +7,13 @@ import ArmedScreen from './components/ArmedScreen.vue'
 import Preflight from './components/Preflight.vue'
 import RecordingScreen from './components/RecordingScreen.vue'
 import RecoverySync from './components/RecoverySync.vue'
+import ReportScreen from './components/ReportScreen.vue'
 import { idb, type StoredRecording } from './idb'
 import { initLogger } from './logger'
 
 const SESSION_KEY = 'citizens-recorder-session'
 
-type Screen = 'joining' | 'no-invite' | 'recovery' | 'preflight' | 'armed' | 'recording' | 'error'
+type Screen = 'joining' | 'no-invite' | 'recovery' | 'preflight' | 'armed' | 'recording' | 'report' | 'error'
 
 const screen = ref<Screen>('joining')
 const error = ref('')
@@ -145,13 +146,20 @@ function sessionStorageClear(): void {
 			v-else-if="screen === 'preflight' && session"
 			:session="session"
 			@ready="screen = 'armed'"
-			@start="startRound" />
+			@start="startRound"
+			@report="screen = 'report'" />
 
 		<ArmedScreen
 			v-else-if="screen === 'armed' && session"
 			:session="session"
 			@start="startRound"
-			@back="screen = 'preflight'" />
+			@back="screen = 'preflight'"
+			@report="screen = 'report'" />
+
+		<ReportScreen
+			v-else-if="screen === 'report' && session"
+			:session="session"
+			@back="screen = orchestrated ? 'armed' : 'preflight'" />
 
 		<RecordingScreen
 			v-else-if="screen === 'recording' && session && selectedRound"
@@ -159,6 +167,7 @@ function sessionStorageClear(): void {
 			:session="session"
 			:round="selectedRound"
 			@exit="screen = orchestrated ? 'armed' : 'preflight'"
-			@next-round="startRound" />
+			@next-round="startRound"
+			@view-report="screen = 'report'" />
 	</div>
 </template>

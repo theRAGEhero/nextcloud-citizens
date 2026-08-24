@@ -127,6 +127,38 @@ def recording_status(recording_id: str, recorder_session: RecorderSess, session:
     return rec_svc.recording_status(session, recording)
 
 
+def _published_report(session: Session, recorder_session: RecorderSession) -> tuple:
+    from citizens.services.report import build_report
+
+    assembly = session.get(Assembly, recorder_session.assembly_id)
+    if assembly is None or assembly.report_published_at is None:
+        raise HTTPException(status_code=404, detail="No published report for this assembly")
+    # approved findings only — AI drafts never reach participants
+    return assembly, build_report(session, assembly, include_drafts=False)
+
+
+@router.get("/recorder/report")
+def published_report(recorder_session: RecorderSess, session: DB):
+    _, report = _published_report(session, recorder_session)
+    return report
+
+
+@router.get("/recorder/report.pdf")
+def published_report_pdf(recorder_session: RecorderSess, session: DB):
+    from fastapi.responses import Response
+
+    from citizens.services.branding import logo_path
+    from citizens.services.report_pdf import render_pdf
+
+    assembly, report = _published_report(session, recorder_session)
+    filename = f"{assembly.name[:40].replace(' ', '-')}-report.pdf"
+    return Response(
+        render_pdf(report, logo_path()),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 class HeartbeatIn(BaseModel):
     recording_id: str | None = None
     recording_active: bool = False
@@ -195,6 +227,8 @@ def _assembly_state(session: Session, recorder_session: RecorderSession) -> dict
             "language": assembly.language,
             "recording_mode": assembly.recording_mode,
         },
+        # phones learn about report publication through the status poll
+        "report_available": assembly.report_published_at is not None,
         "table_number": recorder_session.table_number,
         "rounds": [
             {

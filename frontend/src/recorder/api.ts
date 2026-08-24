@@ -34,8 +34,40 @@ export interface JoinResult {
 
 export interface RecorderStatus {
 	assembly: AssemblyInfo
+	report_available?: boolean
 	table_number: number
 	rounds: RoundInfo[]
+}
+
+export interface PublishedReport {
+	assembly: {
+		name: string
+		description: string
+		language: string
+		participants: number
+		expected_participants: number
+		tables: number
+	}
+	method: string
+	methodology_note: string
+	published_at: string | null
+	rounds: Array<{
+		position: number
+		title: string
+		question: string
+		summary: string
+		cross_table: PublishedFinding[]
+		tables: Array<{ table_number: number; summary: string; findings: PublishedFinding[] }>
+	}>
+}
+
+export interface PublishedFinding {
+	id: string
+	type: string
+	title: string
+	summary: string
+	mentioned_table_count: number | null
+	evidence: Array<{ speaker: string; timestamp: string; text: string }>
 }
 
 export interface RecordingStatus {
@@ -146,4 +178,15 @@ export const recorderApi = {
 			token,
 			json: { entries },
 		}),
+
+	report: (token: string) =>
+		request<PublishedReport>('GET', '/api/v1/public/recorder/report', { token }),
+
+	async reportPdf(token: string): Promise<Blob> {
+		const response = await fetch(appBase() + '/api/v1/public/recorder/report.pdf', {
+			headers: { Authorization: `Bearer ${token}` },
+		})
+		if (!response.ok) throw new RecorderApiError(response.status, `HTTP ${response.status}`)
+		return response.blob()
+	},
 }

@@ -18,7 +18,7 @@ import { pickMimeType } from '../engine'
 import { idb } from '../idb'
 
 const props = defineProps<{ session: JoinResult }>()
-const emit = defineEmits<{ ready: []; start: [round: RoundInfo] }>()
+const emit = defineEmits<{ ready: []; start: [round: RoundInfo]; report: [] }>()
 
 // independent tables pick a round and start right here — one screen, one tap;
 // orchestrated tables arm with READY and the facilitator starts the round
@@ -30,6 +30,19 @@ const selectedRound = ref<RoundInfo | null>(
 		props.session.rounds.filter((r) => !r.recorded_state)[0] ??
 		null,
 )
+const reportAvailable = ref(false)
+
+let reportTimer = 0
+
+// once this table is finished, watch for the organizer publishing the report
+async function pollReport(): Promise<void> {
+	try {
+		const status = await recorderApi.status(props.session.session_token)
+		reportAvailable.value = status.report_available ?? false
+	} catch {
+		/* offline */
+	}
+}
 
 type CheckState = 'pending' | 'ok' | 'warn' | 'fail'
 
@@ -107,9 +120,15 @@ onMounted(async () => {
 	} catch {
 		set('server', 'warn', 'Server unreachable — recording still works locally')
 	}
+
+	if (!orchestrated && openRounds.value.length === 0 && props.session.rounds.length > 0) {
+		void pollReport()
+		reportTimer = window.setInterval(() => void pollReport(), 20_000)
+	}
 })
 
 onBeforeUnmount(() => {
+	window.clearInterval(reportTimer)
 	window.clearInterval(levelTimer)
 	testSource?.stop()
 	stream?.getTracks().forEach((track) => track.stop())
@@ -253,6 +272,9 @@ const STATE_CLASS: Record<CheckState, string> = {
 			<div v-else class="rc-card rc-center">
 				<p class="rc-eyebrow">All rounds recorded</p>
 				<p class="rc-muted" style="margin: 0">This table has completed every round. Thank you!</p>
+				<button v-if="reportAvailable" class="rc-btn rc-primary" @click="emit('report')">
+					View assembly report
+				</button>
 			</div>
 		</template>
 		</div>

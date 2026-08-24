@@ -22,6 +22,8 @@ dependencies = [
     "structlog>=24.1",
     "segno>=1.6",
     "websockets>=13",
+    "cryptography>=42",
+    "fpdf2>=2.7",
 ]
 
 [project.optional-dependencies]

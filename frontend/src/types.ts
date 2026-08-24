@@ -109,7 +109,10 @@ export interface ProvidersSummary {
 		configured: boolean
 		key_hint: string
 		enabled: boolean
+		extra_instructions: string
+		default_prompts?: { table: string; round: string }
 	}
+	logo_set: boolean
 }
 
 export interface TranscriptSegment {
@@ -181,6 +184,7 @@ export interface ReportData {
 	method: string
 	methodology_note: string
 	include_drafts: boolean
+	published_at: string | null
 	rounds: Array<{
 		position: number
 		title: string

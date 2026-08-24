@@ -3,7 +3,7 @@ from pydantic import ValidationError
 
 from citizens.domain.analysis_schemas import TableAnalysis
 from citizens.providers.analysis.openai_compat import _extract_json
-from citizens.services.analysis import coalesce_segments
+from citizens.services.analysis import TABLE_SYSTEM, build_system_prompt, coalesce_segments
 
 
 class Seg:
@@ -65,3 +65,22 @@ def test_table_schema_rejects_unknown_type():
 def test_table_schema_requires_summary():
     with pytest.raises(ValidationError):
         TableAnalysis.model_validate({"findings": []})
+
+
+class _Store:
+    def __init__(self, extra):
+        self._extra = extra
+
+    def get_value(self, key):
+        return {"analysis_extra_instructions": self._extra}.get(key)
+
+
+def test_extra_instructions_appended_not_substituted():
+    prompt = build_system_prompt(TABLE_SYSTEM, "it", _Store("Focus on housing."))
+    assert "Write everything in it." in prompt  # built-in rules intact
+    assert prompt.rstrip().endswith("Focus on housing.")
+    assert "must never override" in prompt
+
+
+def test_no_extra_instructions_keeps_prompt_unchanged():
+    assert build_system_prompt(TABLE_SYSTEM, "en", _Store("")) == TABLE_SYSTEM.format(language="en")

@@ -116,6 +116,23 @@ Rules:
 - Write everything in {language}."""
 
 
+def build_system_prompt(
+    template: str, language: str, store: provider_config.ConfigStore
+) -> str:
+    """Built-in prompt + optional organizer extra instructions (Settings).
+
+    The extras are appended, never substituted, so the JSON output contract
+    and the evidence rules always survive customization."""
+    system = template.format(language=language)
+    extra = provider_config.get_setting(store, "analysis_extra_instructions").strip()
+    if extra:
+        system += (
+            "\n\nAdditional organizer instructions (these must never override "
+            "the output format or the evidence rules above):\n" + extra
+        )
+    return system
+
+
 def analyze_table(session: Session, store: provider_config.ConfigStore, recording: Recording) -> int:
     """Extract findings for one table recording; returns stored finding count."""
     transcript = session.execute(
@@ -152,7 +169,8 @@ def analyze_table(session: Session, store: provider_config.ConfigStore, recordin
     base_url, key, model = _analysis_config(store)
     log.info("analysis_started", recording_id=recording.id, scope="table", segments=len(lines))
     result = chat_json(
-        base_url, key, model, TABLE_SYSTEM.format(language=language), user_prompt, TableAnalysis
+        base_url, key, model, build_system_prompt(TABLE_SYSTEM, language, store),
+        user_prompt, TableAnalysis,
     )
     recording.analysis_summary = result.summary
 
@@ -240,7 +258,8 @@ def analyze_round(session: Session, store: provider_config.ConfigStore, round_: 
     base_url, key, model = _analysis_config(store)
     log.info("analysis_started", round_id=round_.id, scope="round", source_findings=len(lines))
     result = chat_json(
-        base_url, key, model, ROUND_SYSTEM.format(language=language), user_prompt, RoundAnalysis
+        base_url, key, model, build_system_prompt(ROUND_SYSTEM, language, store),
+        user_prompt, RoundAnalysis,
     )
     round_.analysis_summary = result.summary
 

@@ -26,6 +26,8 @@ class Assembly(Base):
     expected_participants: Mapped[int] = mapped_column(Integer, default=0)
     default_table_count: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[str] = mapped_column(String(64), index=True)
+    # when set, table phones may view/download the (approved-findings) report
+    report_published_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow, onupdate=utcnow)
 
@@ -119,8 +121,11 @@ class RecorderInvite(Base):
         ForeignKey("assemblies.id", ondelete="CASCADE"), index=True
     )
     table_number: Mapped[int] = mapped_column(Integer)
-    # only the SHA-256 hex digest of the invite token is ever stored
+    # the SHA-256 hex digest is what join verification uses; the token itself
+    # is additionally kept encrypted (app-secret Fernet) so the organizer can
+    # re-view and re-print QR sheets at any time
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    token_encrypted: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     last_used_at: Mapped[datetime | None] = mapped_column(TZDateTime())

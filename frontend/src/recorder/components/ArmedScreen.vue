@@ -9,10 +9,11 @@ import { recorderApi, type JoinResult, type RoundInfo } from '../api'
  */
 
 const props = defineProps<{ session: JoinResult }>()
-const emit = defineEmits<{ start: [round: RoundInfo]; back: [] }>()
+const emit = defineEmits<{ start: [round: RoundInfo]; back: []; report: [] }>()
 
 const rounds = ref<RoundInfo[]>(props.session.rounds)
 const offline = ref(false)
+const reportAvailable = ref(false)
 
 let pollTimer = 0
 let heartbeatTimer = 0
@@ -24,6 +25,7 @@ async function poll(): Promise<void> {
 	try {
 		const status = await recorderApi.status(props.session.session_token)
 		rounds.value = status.rounds
+		reportAvailable.value = status.report_available ?? false
 		offline.value = false
 		const active = status.rounds.find((r) => r.status === 'ACTIVE' && !r.recorded_state)
 		if (active) emit('start', active)
@@ -71,6 +73,9 @@ onBeforeUnmount(() => {
 				<div class="rc-card rc-center">
 					<p class="rc-eyebrow">All rounds recorded</p>
 					<p class="rc-muted" style="margin: 0">This table has completed every round. Thank you!</p>
+					<button v-if="reportAvailable" class="rc-btn rc-primary" @click="emit('report')">
+						View assembly report
+					</button>
 				</div>
 			</template>
 
