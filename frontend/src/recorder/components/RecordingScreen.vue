@@ -59,6 +59,7 @@ const captionsBox = ref<HTMLElement | null>(null)
 const nextRound = ref<RoundInfo | null>(null)
 const reportAvailable = ref(false)
 const reportOpenCountdown = ref(0)
+const tableSummaries = ref<Array<{ position: number; title: string; summary: string }>>([])
 
 let reportOpenTimer = 0
 
@@ -115,12 +116,22 @@ function watchForNextRound(): void {
 					})
 					.catch(() => undefined)
 			}
-			if (orchestrated && reportAvailable.value && !status.rounds.some((r) => !r.recorded_state)) {
+			// report auto-open: published by the organizer, or (independent)
+			// every table finished every round — both surface here
+			if (reportAvailable.value && !status.rounds.some((r) => !r.recorded_state)) {
 				beginReportAutoOpen()
 			}
-			nextRound.value =
-				status.rounds.find((r) => r.status === 'ACTIVE' && !r.recorded_state && r.id !== props.round.id) ??
-				null
+			// orchestrated waits for the facilitator to activate the next round;
+			// independent tables advance to any round they haven't recorded yet
+			nextRound.value = orchestrated
+				? (status.rounds.find(
+						(r) => r.status === 'ACTIVE' && !r.recorded_state && r.id !== props.round.id,
+					) ?? null)
+				: (status.rounds.find((r) => !r.recorded_state && r.id !== props.round.id) ?? null)
+			// this table's per-round AI summaries for the final screen
+			tableSummaries.value = status.rounds
+				.filter((r) => r.recorded_state)
+				.map((r) => ({ position: r.position, title: r.title, summary: r.table_summary ?? '' }))
 			// orchestrated: the armed table auto-starts the next round after a
 			// short visible countdown (consent was given when arming)
 			if (orchestrated && nextRound.value && !nextStartTimer) {
@@ -172,7 +183,21 @@ watch(
 )
 
 onMounted(async () => {
-	clockTimer = window.setInterval(() => (now.value = Date.now()), 500)
+	clockTimer = window.setInterval(() => {
+		now.value = Date.now()
+		// independent tables run on the round's planned time: when it elapses,
+		// finish automatically (with the same cancellable grace countdown)
+		if (
+			!orchestrated &&
+			state.phase === 'recording' &&
+			!keepTalking.value &&
+			state.startedAt &&
+			now.value - state.startedAt >= props.round.duration_minutes * 60_000
+		) {
+			roundEnded.value = true
+			beginFinishCountdown()
+		}
+	}, 500)
 	try {
 		await engine.start(props.session.session_token, props.round.id)
 	} catch (error) {
@@ -358,14 +383,18 @@ async function clearSynced(): Promise<void> {
 			</div>
 
 			<div v-if="roundEnded && state.phase === 'recording'" class="rc-note">
-				<template v-if="orchestrated && finishCountdown > 0">
-					<strong>The round has ended — finishing in {{ finishCountdown }} s.</strong>
+				<template v-if="finishCountdown > 0">
+					<strong>
+						{{ orchestrated ? 'The round has ended' : 'Time is up for this round' }}
+						— finishing in {{ finishCountdown }} s.
+					</strong>
 					<button class="rc-btn" style="margin-top: 10px" @click="cancelFinishCountdown">
 						Keep talking
 					</button>
 				</template>
 				<template v-else>
-					<strong>The round has ended.</strong> Finish recording?
+					<strong>{{ orchestrated ? 'The round has ended.' : 'Time is up for this round.' }}</strong>
+					Finish recording?
 					<button class="rc-btn rc-primary" style="margin-top: 10px" @click="finishRecording">
 						Finish and synchronize
 					</button>
@@ -435,22 +464,47 @@ async function clearSynced(): Promise<void> {
 					</p>
 					<p v-if="clearedNote" class="rc-muted">{{ clearedNote }}</p>
 
-					<div v-if="nextRound" class="rc-note" style="text-align: left; margin-top: 20px">
+					<div v-if="nextRound && orchestrated" class="rc-note" style="text-align: left; margin-top: 20px">
 						<strong>Round {{ nextRound.position }} has started.</strong>
-						<template v-if="orchestrated && nextStartCountdown > 0">
+						<template v-if="nextStartCountdown > 0">
 							Recording begins in {{ nextStartCountdown }} s…
 						</template>
 						<br />
 						{{ nextRound.question || nextRound.title }}
 					</div>
+					<div v-else-if="nextRound" class="rc-card" style="text-align: left; margin-top: 20px">
+						<p class="rc-eyebrow" style="margin-bottom: 4px">
+							Next: Round {{ nextRound.position }} · {{ nextRound.duration_minutes }} minutes
+						</p>
+						<p class="rc-question" style="margin: 0">
+							{{ nextRound.question || nextRound.title }}
+						</p>
+						<p class="rc-muted" style="margin: 10px 0 0; font-size: 13.5px">
+							Take a break if you need one — recording starts when you tap the button.
+						</p>
+					</div>
 					<div v-else-if="reportOpenCountdown > 0" class="rc-note" style="text-align: left; margin-top: 20px">
 						<strong>The assembly report is ready.</strong>
 						Opening in {{ reportOpenCountdown }} s…
 					</div>
-					<p v-else class="rc-muted rc-center" style="margin-top: 20px; font-size: 13.5px">
-						Keep this page open — the next round starts here automatically, and the
-						assembly report will appear when the organizer publishes it.
-					</p>
+					<template v-else>
+						<div v-if="tableSummaries.length" class="rc-card" style="text-align: left; margin-top: 20px">
+							<p class="rc-eyebrow">This table has completed all rounds</p>
+							<template v-for="entry in tableSummaries" :key="entry.position">
+								<p class="rc-eyebrow" style="margin: 10px 0 2px; color: var(--rc-blue)">
+									Round {{ entry.position }} — your table's AI summary
+								</p>
+								<p v-if="entry.summary" style="font-size: 14px; margin: 0">{{ entry.summary }}</p>
+								<p v-else class="rc-muted" style="font-size: 13.5px; margin: 0">
+									Analyzing your discussion…
+								</p>
+							</template>
+						</div>
+						<p class="rc-muted rc-center" style="margin-top: 14px; font-size: 13.5px">
+							Keep this page open — the assembly report appears here when every table
+							has finished or the organizer publishes it.
+						</p>
+					</template>
 				</div>
 			</div>
 
@@ -460,7 +514,7 @@ async function clearSynced(): Promise<void> {
 					class="rc-btn rc-record"
 					style="margin-top: 0"
 					@click="emit('nextRound', nextRound)">
-					Start recording — Round {{ nextRound.position }}
+					We're ready — Start Round {{ nextRound.position }}
 				</button>
 				<button v-if="reportAvailable" class="rc-btn rc-primary" @click="emit('viewReport')">
 					View assembly report

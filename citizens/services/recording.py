@@ -14,6 +14,7 @@ from citizens.db.models.recording import AudioChunk
 from citizens.logging_setup import get_logger
 from citizens.security.recorder_tokens import generate_token, hash_token
 from citizens.services import invites as invite_svc
+from citizens.services import provider_config
 from citizens.services.jobs import enqueue_job
 from citizens.services.recording_states import transition
 from citizens.storage.paths import chunk_path, recording_dir
@@ -63,6 +64,38 @@ def get_session_by_bearer(session: Session, bearer: str) -> RecorderSession:
 
 # a recording in one of these states is failed/abandoned: re-recording allowed
 RERECORDABLE_STATES = ("CREATED", "AUDIO_INVALID", "UPLOAD_INCOMPLETE")
+
+# the audio is validated and safe server-side (assembly onward)
+COMPLETED_STATES = (
+    "AUDIO_READY", "TRANSCRIBING", "TRANSCRIBED", "TRANSCRIPTION_FAILED",
+    "ANALYZING", "READY_FOR_REVIEW", "REVIEWED", "ANALYSIS_FAILED",
+)
+
+
+def assembly_complete(session: Session, assembly) -> bool:
+    """True when EVERY table has a completed recording for EVERY round.
+
+    Drives the independent-mode auto-availability of the report on phones:
+    with analysis enabled, every round must also carry its cross-table AI
+    summary so the auto-shown report is never empty."""
+    expected = set(range(1, assembly.default_table_count + 1))
+    if not expected or not assembly.rounds:
+        return False
+    completed_by_round: dict[str, set[int]] = {}
+    for recording in session.execute(
+        select(Recording).where(
+            Recording.assembly_id == assembly.id,
+            Recording.state.in_(COMPLETED_STATES),
+        )
+    ).scalars():
+        completed_by_round.setdefault(recording.round_id, set()).add(recording.table_number)
+    analysis_on = provider_config.analysis_enabled_cached()
+    for round_ in assembly.rounds:
+        if not expected.issubset(completed_by_round.get(round_.id, set())):
+            return False
+        if analysis_on and not round_.analysis_summary:
+            return False
+    return True
 
 
 def start_recording(

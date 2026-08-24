@@ -15,6 +15,8 @@ export interface RoundInfo {
 	status: string
 	/** state of this table's healthy recording for the round, null if none */
 	recorded_state?: string | null
+	/** this table's AI summary for the round ('' until analysis lands) */
+	table_summary?: string
 }
 
 export interface AssemblyInfo {

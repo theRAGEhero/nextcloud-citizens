@@ -31,14 +31,19 @@ const selectedRound = ref<RoundInfo | null>(
 		null,
 )
 const reportAvailable = ref(false)
+const tableSummaries = ref<Array<{ position: number; summary: string }>>([])
 
 let reportTimer = 0
 
-// once this table is finished, watch for the organizer publishing the report
+// once this table is finished, watch for the report becoming available and
+// for this table's own AI summaries landing
 async function pollReport(): Promise<void> {
 	try {
 		const status = await recorderApi.status(props.session.session_token)
 		reportAvailable.value = status.report_available ?? false
+		tableSummaries.value = status.rounds
+			.filter((r) => r.recorded_state)
+			.map((r) => ({ position: r.position, summary: r.table_summary ?? '' }))
 	} catch {
 		/* offline */
 	}
@@ -269,9 +274,16 @@ const STATE_CLASS: Record<CheckState, string> = {
 			<div v-else-if="session.rounds.length === 0" class="rc-alert">
 				This assembly has no rounds yet.
 			</div>
-			<div v-else class="rc-card rc-center">
-				<p class="rc-eyebrow">All rounds recorded</p>
-				<p class="rc-muted" style="margin: 0">This table has completed every round. Thank you!</p>
+			<div v-else class="rc-card">
+				<p class="rc-eyebrow rc-center" style="display: block">All rounds recorded</p>
+				<p class="rc-muted rc-center" style="margin: 0">This table has completed every round. Thank you!</p>
+				<template v-for="entry in tableSummaries" :key="entry.position">
+					<p class="rc-eyebrow" style="margin: 10px 0 2px; color: var(--rc-blue)">
+						Round {{ entry.position }} — your table's AI summary
+					</p>
+					<p v-if="entry.summary" style="font-size: 14px; margin: 0">{{ entry.summary }}</p>
+					<p v-else class="rc-muted" style="font-size: 13.5px; margin: 0">Analyzing your discussion…</p>
+				</template>
 				<button v-if="reportAvailable" class="rc-btn rc-primary" @click="emit('report')">
 					View assembly report
 				</button>

@@ -4,6 +4,21 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Independent mode: auto-advancing rounds, table summaries, auto-report — 2026-08-25 (v0.4.1)
+
+- **Rounds advance automatically per table**: when a round's planned time
+  elapses the phone finishes on its own (15 s "Keep talking" grace), and
+  after any finish — timed or manual — it advances to a break-friendly
+  "We're ready — Start Round N" prompt showing the next question. Recording
+  starts only on that tap.
+- **The table sees its own results**: after the last round, the phone shows
+  that table's AI summary for each round as analysis completes.
+- **The report reaches phones in two cases**: automatically once EVERY table
+  has completed EVERY round (independent assemblies; with analysis enabled
+  the summaries must be ready so the report is never empty), or the moment
+  the organizer clicks Publish. Managed assemblies stay publish-only.
+  Verified live end-to-end with a 1-minute timed round.
+
 ### Round-end 500 fix + managed flow + institutional reports — 2026-08-24 (v0.4.0)
 
 - **Fixed the round-end HTTP 500** ("database is locked"): background jobs held

@@ -131,7 +131,7 @@ def _published_report(session: Session, recorder_session: RecorderSession) -> tu
     from citizens.services.report import build_report
 
     assembly = session.get(Assembly, recorder_session.assembly_id)
-    if assembly is None or assembly.report_published_at is None:
+    if assembly is None or not _report_available(session, assembly):
         raise HTTPException(status_code=404, detail="No published report for this assembly")
     # approved findings only — AI drafts never reach participants
     return assembly, build_report(session, assembly, include_drafts=False)
@@ -210,8 +210,10 @@ def _assembly_state(session: Session, recorder_session: RecorderSession) -> dict
     if assembly is None:
         raise HTTPException(status_code=404, detail="Assembly not found")
     # this table's recording state per round, so the phone can lock finished
-    # rounds and offer only un-recorded ones
+    # rounds and offer only un-recorded ones — plus this table's own AI
+    # summary once analysis lands (shown on the final screen)
     recorded_rounds: dict[str, str] = {}
+    table_summaries: dict[str, str] = {}
     for recording in session.execute(
         select(Recording).where(
             Recording.assembly_id == assembly.id,
@@ -220,6 +222,8 @@ def _assembly_state(session: Session, recorder_session: RecorderSession) -> dict
         )
     ).scalars():
         recorded_rounds[recording.round_id] = recording.state
+        if recording.analysis_summary:
+            table_summaries[recording.round_id] = recording.analysis_summary
     return {
         "assembly": {
             "id": assembly.id,
@@ -227,8 +231,8 @@ def _assembly_state(session: Session, recorder_session: RecorderSession) -> dict
             "language": assembly.language,
             "recording_mode": assembly.recording_mode,
         },
-        # phones learn about report publication through the status poll
-        "report_available": assembly.report_published_at is not None,
+        # phones learn about report availability through the status poll
+        "report_available": _report_available(session, assembly),
         "table_number": recorder_session.table_number,
         "rounds": [
             {
@@ -239,7 +243,18 @@ def _assembly_state(session: Session, recorder_session: RecorderSession) -> dict
                 "duration_minutes": round_.duration_minutes,
                 "status": round_.status,
                 "recorded_state": recorded_rounds.get(round_.id),
+                "table_summary": table_summaries.get(round_.id, ""),
             }
             for round_ in assembly.rounds
         ],
     }
+
+
+def _report_available(session: Session, assembly: Assembly) -> bool:
+    """Published explicitly — or, for independent assemblies, every table has
+    completed every round (the organizer may still publish earlier)."""
+    if assembly.report_published_at is not None:
+        return True
+    return assembly.recording_mode == "independent" and rec_svc.assembly_complete(
+        session, assembly
+    )

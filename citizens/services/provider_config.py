@@ -45,8 +45,27 @@ def live_stt_snapshot() -> dict:
 
 
 def invalidate_snapshot() -> None:
-    global _live_snapshot
+    global _live_snapshot, _analysis_enabled_cache
     _live_snapshot = None
+    _analysis_enabled_cache = None
+
+
+_analysis_enabled_cache: tuple[float, bool] | None = None
+
+
+def analysis_enabled_cached() -> bool:
+    """Cached analysis-enabled flag for hot public endpoints (status polls
+    hit this; AppConfig OCS reads are too slow for every poll)."""
+    global _analysis_enabled_cache
+    now = time.monotonic()
+    if _analysis_enabled_cache is not None and now - _analysis_enabled_cache[0] < _LIVE_SNAPSHOT_TTL:
+        return _analysis_enabled_cache[1]
+    try:
+        enabled = get_setting(default_store(), "analysis_enabled") == "1"
+    except Exception:
+        enabled = True  # assume the stricter completion gate when unreachable
+    _analysis_enabled_cache = (now, enabled)
+    return enabled
 
 KEY_FIELDS = ("mistral_api_key", "deepgram_api_key", "analysis_api_key")
 
