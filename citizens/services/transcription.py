@@ -80,6 +80,12 @@ def store_transcript(
     """Replace any existing transcript for this recording (retranscription)."""
     existing = session.query(Transcript).filter_by(recording_id=recording.id).one_or_none()
     if existing is not None:
+        # the old segments cascade away, taking every finding's evidence links
+        # with them (the new segments have new ids) — flag those findings so
+        # reports do not silently show them without quotes
+        from citizens.services.files import mark_evidence_removed
+
+        mark_evidence_removed(session, existing)
         session.delete(existing)
         session.flush()
 

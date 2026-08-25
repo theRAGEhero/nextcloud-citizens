@@ -129,6 +129,9 @@ def _finding(pdf: _ReportPDF, finding: dict, cross: bool) -> None:
         )
     pdf.text_block(finding["summary"], height=5)
     quotes = finding["evidence"][:5]
+    if not quotes and finding.get("evidence_removed"):
+        pdf.text_block("Evidence removed with the transcript.", size=9, color=MUTED, height=4.6,
+                       indent=5)
     if quotes:
         y_start = pdf.get_y() + 1
         pdf.ln(1)

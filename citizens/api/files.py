@@ -82,6 +82,36 @@ def delete_audio(recording_id: str, user: CurrentUser, session: DB):
     return {"freed_bytes": freed}
 
 
+@router.delete("/recordings/{recording_id}/transcript", status_code=200)
+def delete_transcript(recording_id: str, user: CurrentUser, session: DB):
+    recording = _owned_recording(session, recording_id, user)
+    assembly = get_owned_assembly(session, recording.assembly_id, user)
+    deleted = files_svc.delete_recording_transcript(session, recording)
+    if deleted:
+        files_svc.refresh_frozen_report(session, assembly)
+        record_audit_event(
+            session, "recording_transcript_deleted", "recording", recording.id, actor=user,
+            data={"table_number": recording.table_number},
+        )
+    return {
+        "deleted": deleted,
+        "retranscribable": files_svc.canonical_path(recording) is not None,
+    }
+
+
+@router.delete("/assemblies/{assembly_id}/transcripts", status_code=200)
+def delete_all_transcripts(assembly_id: str, user: CurrentUser, session: DB):
+    assembly = get_owned_assembly(session, assembly_id, user)
+    count = files_svc.delete_assembly_transcripts(session, assembly)
+    if count:
+        files_svc.refresh_frozen_report(session, assembly)
+        record_audit_event(
+            session, "assembly_transcripts_deleted", "assembly", assembly.id, actor=user,
+            data={"transcripts": count},
+        )
+    return {"transcripts": count}
+
+
 @router.delete("/assemblies/{assembly_id}/audio", status_code=200)
 def delete_all_audio(assembly_id: str, user: CurrentUser, session: DB):
     assembly = get_owned_assembly(session, assembly_id, user)

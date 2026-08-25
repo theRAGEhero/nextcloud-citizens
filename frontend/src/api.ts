@@ -153,6 +153,13 @@ export const api = {
 			'DELETE',
 			`/api/v1/assemblies/${assemblyId}/audio`,
 		),
+	deleteRecordingTranscript: (recordingId: string) =>
+		request<{ deleted: boolean; retranscribable: boolean }>(
+			'DELETE',
+			`/api/v1/recordings/${recordingId}/transcript`,
+		),
+	deleteAssemblyTranscripts: (assemblyId: string) =>
+		request<{ transcripts: number }>('DELETE', `/api/v1/assemblies/${assemblyId}/transcripts`),
 
 	getTranscript: (recordingId: string) =>
 		request<TranscriptData>('GET', `/api/v1/recordings/${recordingId}/transcript`),

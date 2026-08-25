@@ -50,6 +50,7 @@ export interface FileEntry {
 	audio_available: boolean
 	audio_deleted_at: string | null
 	has_transcript: boolean
+	can_retranscribe: boolean
 }
 
 export interface FilesListing {
@@ -242,6 +243,7 @@ export interface ReportFinding {
 	is_draft: boolean
 	table_number: number | null
 	mentioned_table_count: number
+	evidence_removed?: boolean
 	evidence: Array<{ speaker: string; start: number; timestamp: string; text: string }>
 }
 

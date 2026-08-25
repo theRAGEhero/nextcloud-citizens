@@ -191,3 +191,98 @@ def test_audio_bundle_zip(client, tmp_path):
     archive = zipfile.ZipFile(io.BytesIO(response.content))
     assert len(archive.namelist()) == 1
     assert archive.namelist()[0].endswith(".webm")
+
+
+def _transcript_and_finding(assembly_id, recording_id):
+    """Give a recording a transcript with one segment and a finding citing it."""
+    from citizens.db.models import Finding, FindingEvidence, Recording, Transcript
+    from citizens.db.models.transcript import TranscriptSegment
+    from citizens.db.session import session_scope
+
+    with session_scope() as session:
+        recording = session.get(Recording, recording_id)
+        transcript = Transcript(
+            recording_id=recording_id, provider="test", model="test", language="en",
+            raw_response_path=f"transcripts/{assembly_id}/{recording_id}.raw.json",
+        )
+        segment = TranscriptSegment(
+            transcript=transcript, sequence=0, speaker_label="SPEAKER_00",
+            start_seconds=0.0, end_seconds=2.0, text="The last bus leaves too early.",
+        )
+        session.add(transcript)
+        session.flush()  # the evidence link needs the segment's generated id
+        finding = Finding(
+            assembly_id=assembly_id, round_id=recording.round_id, table_id=recording.table_id,
+            recording_id=recording_id, scope="table", type="proposal",
+            title="Later buses", summary="Extend evening service.", status="APPROVED",
+        )
+        finding.evidence.append(FindingEvidence(transcript_segment_id=segment.id))
+        session.add(finding)
+        session.flush()
+        return finding.id
+
+
+def test_delete_transcript_keeps_findings_and_allows_retranscription(client, tmp_path, settings_env):
+    from citizens.db.models import Finding, Recording, Transcript
+    from citizens.db.session import session_scope
+
+    assembly = _assembly(client, "TEST Del Transcript", tables=1)
+    headers, joined = _join(client, assembly, 0, "10.8.8.7")
+    recording_id = _record(client, headers, joined["rounds"][0]["id"], _audio(tmp_path))
+    finding_id = _transcript_and_finding(assembly["id"], recording_id)
+
+    raw = settings_env.app_persistent_storage / "transcripts" / assembly["id"] / f"{recording_id}.raw.json"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_text('{"verbatim": "the last bus leaves too early"}')
+
+    listing = client.get(f"/api/v1/assemblies/{assembly['id']}/files").json()
+    assert listing["rounds"][0]["tables"][0]["has_transcript"] is True
+
+    # the report quotes the transcript before deletion
+    report = client.get(f"/api/v1/assemblies/{assembly['id']}/report").json()
+    quoted = report["rounds"][0]["tables"][0]["findings"][0]
+    assert quoted["evidence"][0]["text"] == "The last bus leaves too early."
+
+    deleted = client.delete(f"/api/v1/recordings/{recording_id}/transcript")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"deleted": True, "retranscribable": True}
+
+    # verbatim text is gone from the DB and from disk
+    assert not raw.exists()
+    with session_scope() as session:
+        assert session.query(Transcript).filter_by(recording_id=recording_id).one_or_none() is None
+        finding = session.get(Finding, finding_id)
+        assert finding is not None  # the finding survives…
+        assert finding.evidence_removed_at is not None  # …flagged as quote-less
+        assert session.get(Recording, recording_id).state == "AUDIO_READY"
+
+    listing = client.get(f"/api/v1/assemblies/{assembly['id']}/files").json()
+    assert listing["rounds"][0]["tables"][0]["has_transcript"] is False
+    assert listing["rounds"][0]["tables"][0]["audio_available"] is True
+
+    report = client.get(f"/api/v1/assemblies/{assembly['id']}/report").json()
+    stripped = report["rounds"][0]["tables"][0]["findings"][0]
+    assert stripped["evidence"] == []
+    assert stripped["evidence_removed"] is True
+    assert stripped["title"] == "Later buses"
+
+    # the audio is still there, so transcription can run again
+    assert client.post(f"/api/v1/recordings/{recording_id}/transcribe").status_code in (200, 202)
+
+
+def test_delete_all_transcripts_and_frozen_report_refresh(client, tmp_path):
+    assembly = _assembly(client, "TEST Del All Transcripts", tables=1)
+    headers, joined = _join(client, assembly, 0, "10.8.8.8")
+    recording_id = _record(client, headers, joined["rounds"][0]["id"], _audio(tmp_path))
+    _transcript_and_finding(assembly["id"], recording_id)
+
+    client.post(f"/api/v1/assemblies/{assembly['id']}/close")
+    frozen = client.get("/api/v1/public/recorder/report", headers=headers).json()
+    assert frozen["rounds"][0]["tables"][0]["findings"][0]["evidence"], "quotes expected before"
+
+    result = client.delete(f"/api/v1/assemblies/{assembly['id']}/transcripts")
+    assert result.status_code == 200 and result.json()["transcripts"] == 1
+
+    # the frozen copy participants read is re-snapshotted without the quotes
+    after = client.get("/api/v1/public/recorder/report", headers=headers).json()
+    assert after["rounds"][0]["tables"][0]["findings"][0]["evidence"] == []

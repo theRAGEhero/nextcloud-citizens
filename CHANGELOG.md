@@ -4,6 +4,22 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Delete transcripts from the Files tab — 2026-08-25 (v0.5.1)
+
+- **Delete transcript** next to Delete audio: per table and for the whole
+  session. The verbatim text is erased everywhere — transcript, raw provider
+  JSON on disk, and the quotes inside findings, including in an already
+  published report (the frozen copy is re-created without them).
+- Findings and AI summaries **survive** the deletion; where quotes used to be,
+  reports now say "Evidence removed with the transcript" instead of showing a
+  finding that merely looks unsupported.
+- When the audio is still on the server, deleting a transcript returns the
+  recording to "audio ready" so it can be **transcribed again** (useful to redo
+  a poor transcript or switch model).
+- Fixed a pre-existing silent data loss: re-transcribing a recording already
+  replaced its transcript and stripped approved findings of their evidence with
+  no trace — those findings are now flagged the same way.
+
 ### Closing a session, Files tab, interim vs final report — 2026-08-25 (v0.5.0)
 
 - **A report is now interim until you close the session.** The Report tab says

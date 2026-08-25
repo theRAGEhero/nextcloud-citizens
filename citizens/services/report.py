@@ -105,6 +105,9 @@ def build_report(session: Session, assembly: Assembly, include_drafts: bool = Fa
             "is_draft": finding.status == "DRAFT",
             "table_number": table_numbers.get(finding.table_id or ""),
             "mentioned_table_count": finding.mentioned_table_count,
+            # the quotes went away with a deleted/replaced transcript — say so
+            # rather than rendering a finding that looks unsupported
+            "evidence_removed": finding.evidence_removed_at is not None,
             "evidence": [
                 {
                     "speaker": segments[e.transcript_segment_id].speaker_label,
@@ -254,4 +257,6 @@ def _markdown_finding(finding: dict, cross: bool) -> list[str]:
     for evidence in finding["evidence"][:5]:
         speaker = evidence["speaker"] or "Speaker"
         lines += [f"> [{evidence['timestamp']}] {speaker}: “{evidence['text']}”", ""]
+    if not finding["evidence"] and finding.get("evidence_removed"):
+        lines += ["_Evidence removed with the transcript._", ""]
     return lines

@@ -8,17 +8,20 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "ASSEMBLING": {"AUDIO_READY", "AUDIO_INVALID", "WAITING_FOR_CHUNKS"},
     "AUDIO_READY": {"TRANSCRIBING"},
     "TRANSCRIBING": {"TRANSCRIBED", "TRANSCRIPTION_FAILED"},
-    # TRANSCRIBED → TRANSCRIBING supports organizer-requested re-transcription
-    "TRANSCRIBED": {"ANALYZING", "TRANSCRIBING"},
+    # TRANSCRIBED → TRANSCRIBING supports organizer-requested re-transcription;
+    # → AUDIO_READY when the organizer deletes the transcript but keeps the audio
+    "TRANSCRIBED": {"ANALYZING", "TRANSCRIBING", "AUDIO_READY"},
     "ANALYZING": {"READY_FOR_REVIEW", "ANALYSIS_FAILED"},
     # READY_FOR_REVIEW → ANALYZING supports organizer-requested re-analysis
-    "READY_FOR_REVIEW": {"REVIEWED", "ANALYZING"},
-    "REVIEWED": set(),
+    "READY_FOR_REVIEW": {"REVIEWED", "ANALYZING", "AUDIO_READY"},
+    # a reviewed recording is otherwise terminal, but deleting its transcript
+    # brings it back to plain audio that can be transcribed again
+    "REVIEWED": {"AUDIO_READY"},
     # error states are recoverable by retrying the step that failed
     "UPLOAD_INCOMPLETE": {"WAITING_FOR_CHUNKS", "ASSEMBLING"},
     "AUDIO_INVALID": {"ASSEMBLING"},
-    "TRANSCRIPTION_FAILED": {"TRANSCRIBING"},
-    "ANALYSIS_FAILED": {"ANALYZING"},
+    "TRANSCRIPTION_FAILED": {"TRANSCRIBING", "AUDIO_READY"},
+    "ANALYSIS_FAILED": {"ANALYZING", "AUDIO_READY"},
 }
 
 

@@ -5,6 +5,7 @@ import {
 	mdiFolderZipOutline,
 	mdiMusicNoteOutline,
 	mdiPackageVariantClosed,
+	mdiTextBoxRemoveOutline,
 } from '@mdi/js'
 import { computed, onMounted, ref } from 'vue'
 import { api, BASE } from '../api'
@@ -23,6 +24,8 @@ const error = ref('')
 const busy = ref(false)
 const confirmOne = ref<FileEntry | null>(null)
 const confirmAll = ref(false)
+const confirmTranscript = ref<FileEntry | null>(null)
+const confirmAllTranscripts = ref(false)
 
 async function reload(): Promise<void> {
 	try {
@@ -38,6 +41,44 @@ onMounted(reload)
 const hasAudio = computed(() =>
 	(listing.value?.rounds ?? []).some((round) => round.tables.some((t) => t.audio_available)),
 )
+
+const hasTranscripts = computed(() =>
+	(listing.value?.rounds ?? []).some((round) => round.tables.some((t) => t.has_transcript)),
+)
+
+async function deleteTranscript(): Promise<void> {
+	const entry = confirmTranscript.value
+	confirmTranscript.value = null
+	if (!entry) return
+	busy.value = true
+	try {
+		const result = await api.deleteRecordingTranscript(entry.recording_id)
+		toast(
+			result.retranscribable
+				? 'Transcript deleted — this recording can be transcribed again'
+				: 'Transcript deleted',
+		)
+		await reload()
+	} catch (err) {
+		error.value = err instanceof Error ? err.message : String(err)
+	} finally {
+		busy.value = false
+	}
+}
+
+async function deleteAllTranscripts(): Promise<void> {
+	confirmAllTranscripts.value = false
+	busy.value = true
+	try {
+		const result = await api.deleteAssemblyTranscripts(props.assembly.id)
+		toast(`${result.transcripts} transcripts deleted`)
+		await reload()
+	} catch (err) {
+		error.value = err instanceof Error ? err.message : String(err)
+	} finally {
+		busy.value = false
+	}
+}
 
 function formatBytes(bytes: number): string {
 	if (!bytes) return '—'
@@ -126,6 +167,13 @@ async function deleteAll(): Promise<void> {
 							@click="confirmAll = true">
 							Delete all audio
 						</CzButton>
+						<CzButton
+							variant="danger"
+							:icon="mdiTextBoxRemoveOutline"
+							:disabled="busy || !hasTranscripts"
+							@click="confirmAllTranscripts = true">
+							Delete all transcripts
+						</CzButton>
 					</div>
 				</div>
 				<p class="cz-muted" style="margin: 12px 0 0; font-size: 13px">
@@ -182,8 +230,20 @@ async function deleteAll(): Promise<void> {
 											small
 											variant="tertiary"
 											:icon="mdiDeleteOutline"
+											title="Delete audio"
 											:disabled="busy || !entry.audio_available"
-											@click="confirmOne = entry" />
+											@click="confirmOne = entry">
+											Audio
+										</CzButton>
+										<CzButton
+											small
+											variant="tertiary"
+											:icon="mdiTextBoxRemoveOutline"
+											title="Delete transcript"
+											:disabled="busy || !entry.has_transcript"
+											@click="confirmTranscript = entry">
+											Transcript
+										</CzButton>
 									</div>
 								</td>
 							</tr>
@@ -200,6 +260,22 @@ async function deleteAll(): Promise<void> {
 			confirm-label="Delete audio"
 			@confirm="deleteOne"
 			@cancel="confirmOne = null" />
+
+		<CzConfirm
+			v-if="confirmTranscript"
+			title="Delete this table's transcript?"
+			:message="`The verbatim text of table ${confirmTranscript.table_number} will be permanently erased — including the quotes shown inside findings and in the published report. The findings and AI summaries stay. ${confirmTranscript.can_retranscribe ? 'The audio is still here, so this recording can be transcribed again.' : 'Its audio is already deleted, so the transcript cannot be recreated.'}`"
+			confirm-label="Delete transcript"
+			@confirm="deleteTranscript"
+			@cancel="confirmTranscript = null" />
+
+		<CzConfirm
+			v-if="confirmAllTranscripts"
+			title="Delete all transcripts of this session?"
+			message="Every table's verbatim text will be permanently erased, including the quotes inside findings and in the published report. Findings and AI summaries stay. Tables whose audio is still here can be transcribed again."
+			confirm-label="Delete all transcripts"
+			@confirm="deleteAllTranscripts"
+			@cancel="confirmAllTranscripts = false" />
 
 		<CzConfirm
 			v-if="confirmAll && listing"

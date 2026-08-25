@@ -285,6 +285,12 @@ const hasContent = () =>
 									style="margin: 6px 0; padding: 4px 12px; border-left: 3px solid var(--cz-border); font-size: 13.5px; color: var(--cz-text-muted)">
 									[{{ evidence.timestamp }}] {{ evidence.speaker || 'Speaker' }}: “{{ evidence.text }}”
 								</blockquote>
+									<p
+										v-if="!finding.evidence.length && finding.evidence_removed"
+										class="cz-muted"
+										style="font-size: 13px; font-style: italic; margin: 4px 0">
+										Evidence removed with the transcript
+									</p>
 							</div>
 						</template>
 					</template>
@@ -310,6 +316,12 @@ const hasContent = () =>
 									style="margin: 6px 0; padding: 4px 12px; border-left: 3px solid var(--cz-border); font-size: 13.5px; color: var(--cz-text-muted)">
 									[{{ evidence.timestamp }}] {{ evidence.speaker || 'Speaker' }}: “{{ evidence.text }}”
 								</blockquote>
+									<p
+										v-if="!finding.evidence.length && finding.evidence_removed"
+										class="cz-muted"
+										style="font-size: 13px; font-style: italic; margin: 4px 0">
+										Evidence removed with the transcript
+									</p>
 							</div>
 						</template>
 					</template>

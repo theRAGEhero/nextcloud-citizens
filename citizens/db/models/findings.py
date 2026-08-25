@@ -45,6 +45,9 @@ class Finding(Base):
     mentioned_table_count: Mapped[int] = mapped_column(Integer, default=0)
     reviewed_by: Mapped[str | None] = mapped_column(String(64))
     reviewed_at: Mapped[datetime | None] = mapped_column(TZDateTime())
+    # the quoted evidence vanished with a deleted (or replaced) transcript;
+    # reports say so instead of silently showing a finding with no quotes
+    evidence_removed_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow, onupdate=utcnow)
 

@@ -15,8 +15,10 @@ from sqlalchemy.orm import Session
 from citizens.config import get_settings
 from citizens.db.models import Assembly, Participant, Recording, Transcript
 from citizens.db.models.base import utcnow
+from citizens.db.models.findings import Finding, FindingEvidence
 from citizens.db.models.recording import AudioChunk
 from citizens.logging_setup import get_logger
+from citizens.services.recording_states import InvalidTransition, transition
 from citizens.services.report import build_report, render_markdown
 from citizens.services.transcription import transcript_payload
 from citizens.storage.paths import exports_dir, recording_dir
@@ -92,6 +94,7 @@ def list_files(session: Session, assembly: Assembly) -> dict:
                     recording.audio_deleted_at.isoformat() if recording.audio_deleted_at else None
                 ),
                 "has_transcript": recording.id in transcribed,
+                "can_retranscribe": path is not None,
             }
         )
     return {
@@ -143,6 +146,79 @@ def delete_recording_audio(session: Session, recording: Recording) -> int:
     recording.audio_deleted_at = utcnow()
     log.info("recording_audio_deleted", recording_id=recording.id, freed_bytes=freed)
     return freed
+
+
+def mark_evidence_removed(session: Session, transcript: Transcript) -> int:
+    """Flag findings that quote this transcript before its segments disappear.
+
+    FindingEvidence rows cascade away with the segments (SQLite ON DELETE
+    CASCADE), so without this marker a report would quietly render findings
+    with no quotes and no explanation."""
+    segment_ids = [segment.id for segment in transcript.segments]
+    if not segment_ids:
+        return 0
+    finding_ids = list(
+        session.execute(
+            select(FindingEvidence.finding_id).where(
+                FindingEvidence.transcript_segment_id.in_(segment_ids)
+            )
+        ).scalars()
+    )
+    if not finding_ids:
+        return 0
+    now = utcnow()
+    findings = list(
+        session.execute(select(Finding).where(Finding.id.in_(finding_ids))).scalars()
+    )
+    for finding in findings:
+        finding.evidence_removed_at = now
+    return len(findings)
+
+
+def delete_recording_transcript(session: Session, recording: Recording) -> bool:
+    """Erase the verbatim text of one recording: transcript rows, the raw
+    provider JSON, and the quotes inside findings. The findings and the AI
+    summaries survive; the audio (if still present) can be transcribed again."""
+    transcript = session.execute(
+        select(Transcript).where(Transcript.recording_id == recording.id)
+    ).scalar_one_or_none()
+    if transcript is None:
+        return False
+    marked = mark_evidence_removed(session, transcript)
+    if transcript.raw_response_path:
+        (_storage_root() / transcript.raw_response_path).unlink(missing_ok=True)
+    session.delete(transcript)
+    session.flush()
+    # back to plain audio so the organizer can re-run transcription
+    if canonical_path(recording) is not None and recording.state != "AUDIO_READY":
+        try:
+            transition(recording, "AUDIO_READY")
+        except InvalidTransition:
+            log.warning(
+                "transcript_deleted_state_kept",
+                recording_id=recording.id,
+                state=recording.state,
+            )
+    log.info("recording_transcript_deleted", recording_id=recording.id, findings_marked=marked)
+    return True
+
+
+def delete_assembly_transcripts(session: Session, assembly: Assembly) -> int:
+    count = 0
+    for recording in _recordings(session, assembly):
+        if delete_recording_transcript(session, recording):
+            count += 1
+    return count
+
+
+def refresh_frozen_report(session: Session, assembly: Assembly) -> None:
+    """Deleted data must also leave the frozen copy participants read."""
+    if not assembly.final_report_json:
+        return
+    from citizens.services.lifecycle import snapshot_final_report
+
+    snapshot_final_report(session, assembly)
+    log.info("final_report_resnapshotted", assembly_id=assembly.id)
 
 
 def delete_assembly_audio(session: Session, assembly: Assembly) -> tuple[int, int]:
