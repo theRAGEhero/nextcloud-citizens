@@ -4,6 +4,13 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### QR sheet copy button fix — 2026-08-25 (v0.5.2)
+
+- Fixed the oversized copy icon on the QR codes tab: a stylesheet rule meant
+  for the QR image was stretching every icon in the card, including the new
+  button's. The copy control is now a normal compact "Copy link" button under
+  each code.
+
 ### Delete transcripts from the Files tab — 2026-08-25 (v0.5.1)
 
 - **Delete transcript** next to Delete audio: per table and for the whole
