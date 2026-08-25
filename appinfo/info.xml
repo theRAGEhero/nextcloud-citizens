@@ -1,28 +1,107 @@
 <?xml version="1.0"?>
-<info>
+<!--
+  SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+  SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
 	<id>citizens</id>
-	<name>Nextcloud Citizens</name>
-	<summary>Run physical citizens' assemblies: offline-first table recording, transcription, evidence-linked analysis</summary>
-	<description>
-	<![CDATA[Nextcloud Citizens supports in-person citizens' assemblies. One ordinary phone
-per discussion table records audio offline-first, uploads it safely when
-connectivity allows, and the app produces diarized transcripts and
-evidence-linked AI analysis that a human organizer reviews and approves.]]>
-	</description>
-	<version>0.1.0</version>
-	<licence>agpl</licence>
+	<name>Citizens</name>
+	<summary>Run in-person citizens' assemblies: offline-first table recording, transcription and evidence-linked analysis</summary>
+	<description><![CDATA[
+Citizens supports **in-person citizens' assemblies and deliberative workshops**.
+One ordinary phone per discussion table records the conversation, and the app
+turns those recordings into transcripts, per-table summaries and cross-table
+findings that a human organizer reviews before anything is published.
+
+## How it works
+
+1. Create an assembly with its rounds and questions, and print one QR code per table.
+2. Each table opens its code on a phone. Recording is **offline-first**: audio is
+   stored on the device first and uploaded when the network allows, so a bad
+   connection can never lose a discussion.
+3. Run the assembly in **live mode** (you start and end each round for every table
+   at once) or **independent mode** (each table records the shared questions on its
+   own schedule, even days apart).
+4. Recordings are transcribed with speaker diarization and analyzed per table, then
+   aggregated across tables into points of consensus, points of divergence,
+   proposals, concerns and open questions — every finding linked to the exact
+   passage that supports it.
+5. You review and approve findings, close the session, and export the final report
+   as PDF, Markdown or JSON. Reports can be published back to the table phones so
+   participants see the outcome of their own discussion.
+
+## Data processing — please read
+
+This app records people's voices, which is sensitive personal data.
+
+* **Nothing is sent anywhere until an administrator configures a key.** A fresh
+  install performs no transcription and no analysis.
+* **Speech-to-text**: when an administrator adds a Deepgram or Mistral API key, the
+  assembled audio of a recording is sent to that provider once, for transcription.
+* **Analysis**: when an administrator configures an analysis endpoint, only the
+  *transcript text* (never audio) is sent to it. Any OpenAI-compatible endpoint
+  works, so this step can run entirely on your own infrastructure — for example a
+  self-hosted Ollama or vLLM server.
+* **Everything else stays on your server**: audio files, transcripts, findings and
+  reports live in the app's own storage, never in users' Nextcloud files.
+* Organizers can download or **delete audio and transcripts** at any time from the
+  Files tab of each assembly, without deleting the assembly itself.
+
+Full note: https://github.com/theRAGEhero/nextcloud-citizens/blob/main/docs/privacy.md
+
+## Ethical AI Rating
+
+**Rating: 🟠 Orange** — the default transcription providers are proprietary hosted
+services (Deepgram, Mistral), and no fully self-hosted speech-to-text is wired up
+yet. Positives: the software is AGPL and self-hosted, all data stays on your server
+by default, transcription is off until you supply a key, and the analysis step works
+against any OpenAI-compatible endpoint including local models. Negatives: the
+speech-to-text step currently requires a third-party service and its models are not
+freely available. See https://nextcloud.com/blog/nextcloud-ethical-ai-rating/
+
+## Status
+
+This is a **beta release**. The recording, transcription, analysis and reporting
+pipeline is tested end to end, but automatic retention (scheduled deletion of audio)
+and an in-app participant consent notice are still to come. Organizers running real
+assemblies should have a privacy notice and a retention practice of their own.
+	]]></description>
+	<version>0.6.0-beta.1</version>
+	<licence>AGPL-3.0-or-later</licence>
 	<author mail="philip@decentsoftwa.re">Philip</author>
-	<namespace>Citizens</namespace>
+	<documentation>
+		<user>https://github.com/theRAGEhero/nextcloud-citizens/blob/main/README.md</user>
+		<admin>https://github.com/theRAGEhero/nextcloud-citizens/blob/main/docs/administration.md</admin>
+		<developer>https://github.com/theRAGEhero/nextcloud-citizens/blob/main/docs/architecture.md</developer>
+	</documentation>
 	<category>tools</category>
+	<category>ai</category>
 	<website>https://github.com/theRAGEhero/nextcloud-citizens</website>
 	<bugs>https://github.com/theRAGEhero/nextcloud-citizens/issues</bugs>
+	<repository type="git">https://github.com/theRAGEhero/nextcloud-citizens.git</repository>
+	<screenshot>https://raw.githubusercontent.com/theRAGEhero/nextcloud-citizens/main/img/screenshots/01-overview.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/theRAGEhero/nextcloud-citizens/main/img/screenshots/02-qr-codes.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/theRAGEhero/nextcloud-citizens/main/img/screenshots/03-live.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/theRAGEhero/nextcloud-citizens/main/img/screenshots/04-recorder.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/theRAGEhero/nextcloud-citizens/main/img/screenshots/05-analysis.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/theRAGEhero/nextcloud-citizens/main/img/screenshots/06-report.png</screenshot>
 	<dependencies>
+		<!-- 32 is the floor for HaRP-based deployment; the store caps
+		     max-version at the latest release + 1. -->
 		<nextcloud min-version="32" max-version="35"/>
 	</dependencies>
 	<external-app>
+		<docker-install>
+			<registry>ghcr.io</registry>
+			<image>theragehero/citizens</image>
+			<image-tag>0.6.0-beta.1</image-tag>
+		</docker-install>
 		<!-- Route regexes are matched against the request path WITHOUT a
-		     leading slash and wrapped in /.../i delimiters by AppAPI, so
-		     patterns must start with e.g. ^js\/ (never ^/). -->
+		     leading slash on AppAPI <= 33 and WITH one on 34+; the escaped
+		     bare-path form below is the only one that works on both.
+		     Order matters on AppAPI 34+: the first route matching path+verb
+		     wins outright, so narrow routes MUST precede catch-alls. -->
 		<routes>
 			<route>
 				<url>^js\/.*</url>
@@ -39,23 +118,24 @@ evidence-linked AI analysis that a human organizer reviews and approves.]]>
 				<verb>GET</verb>
 				<access_level>USER</access_level>
 			</route>
-			<!-- admin routes MUST precede the general api catch-all: the proxy
-			     uses the first matching route's access level -->
 			<route>
 				<url>^api\/v1\/admin\/.*</url>
 				<verb>GET,POST,PUT,DELETE</verb>
 				<access_level>ADMIN</access_level>
 			</route>
+			<!-- table phones: join, chunk upload, status, published report -->
 			<route>
 				<url>^api\/v1\/public\/.*</url>
 				<verb>GET,POST</verb>
 				<access_level>PUBLIC</access_level>
+				<bruteforce_protection>[401, 403, 429]</bruteforce_protection>
 			</route>
 			<route>
 				<url>^api\/v1\/.*</url>
 				<verb>GET,POST,PUT,PATCH,DELETE</verb>
 				<access_level>USER</access_level>
 			</route>
+			<!-- the recorder page itself and its bundled assets -->
 			<route>
 				<url>^recorder.*</url>
 				<verb>GET</verb>

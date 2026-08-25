@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Nextcloud Citizens ExApp entry point."""
 
 import asyncio
@@ -57,6 +59,11 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     ensure_storage_layout(settings.app_persistent_storage)
     setup_logging(settings)
+    # a deployment missing these starts up looking healthy while invite links
+    # and at-rest invite encryption are quietly broken — say so loudly
+    missing = settings.missing_required()
+    if missing and not settings.auth_disabled():
+        log.error("missing_required_environment", variables=missing)
     configure_database(sqlite_url(db_path(settings.app_persistent_storage)))
     run_migrations(sqlite_url(db_path(settings.app_persistent_storage)))
     set_handlers(app, enabled_handler)
@@ -110,9 +117,17 @@ def create_app(with_auth: bool = True) -> FastAPI:
 
 
 _settings = get_settings()
-if _settings.citizens_insecure_no_auth:
+_auth_disabled = _settings.auth_disabled()
+if _settings.citizens_insecure_no_auth and not _auth_disabled:
+    # a stray env var must never open up a real deployment
+    log.error(
+        "insecure_no_auth_ignored",
+        reason="CITIZENS_INSECURE_NO_AUTH is only honored against a local Nextcloud",
+        nextcloud_url=_settings.nextcloud_url,
+    )
+elif _auth_disabled:
     log.warning("AUTH DISABLED (CITIZENS_INSECURE_NO_AUTH) — browser-test mode only")
-APP = create_app(with_auth=not _settings.citizens_insecure_no_auth)
+APP = create_app(with_auth=not _auth_disabled)
 
 
 if __name__ == "__main__":

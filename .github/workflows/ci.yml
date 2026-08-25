@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Lint and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build test image
+        run: docker build --build-arg WITH_TEST_TOOLS=1 -t citizens-dev .
+
+      - name: Lint
+        run: |
+          docker run --rm --user root -v "$PWD":/app -w /app --entrypoint sh citizens-dev \
+            -c "pip install -q ruff && ruff check citizens tests"
+
+      - name: Tests
+        run: |
+          docker run --rm --user root -v "$PWD":/app -w /app --entrypoint sh citizens-dev \
+            -c "pip install -q pytest && python -m pytest -q"
+
+  bundles:
+    name: Committed bundles match the sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # js/, css/ and recorder_static/ are committed build outputs that ship in
+      # the image; a stale bundle would deploy code nobody can reproduce
+      - name: Rebuild the frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Fail if the committed bundles are stale
+        run: |
+          if ! git diff --quiet -- js css recorder_static; then
+            echo "::error::Committed bundles differ from a fresh build — run 'npm run build' in frontend/ and commit the result."
+            git --no-pager diff --stat -- js css recorder_static
+            exit 1
+          fi
+
+  appinfo:
+    name: info.xml validates against the App Store schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install lxml requests
+
+      # The store strips unknown elements (our <routes>) with an XSLT before
+      # validating, so validate the same way it does rather than raw.
+      - name: Validate through the store pipeline
+        run: python scripts/validate_info_xml.py

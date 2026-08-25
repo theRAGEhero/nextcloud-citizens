@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Mistral (Voxtral) batch transcription adapter.
 
 API verified against docs 2026-08-23: POST /v1/audio/transcriptions

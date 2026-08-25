@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Report publishing to table phones, PDF rendering, invite link re-viewing."""
 
 import base64

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """AI findings with mandatory evidence links and human review (brief §37–§40)."""
 
 from datetime import datetime

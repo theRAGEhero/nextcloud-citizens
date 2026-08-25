@@ -1,3 +1,5 @@
+<!-- SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+     SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { recorderApi, type JoinResult, type RoundInfo } from '../api'

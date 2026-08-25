@@ -1,0 +1,112 @@
+# Releasing to the Nextcloud App Store
+
+Citizens is an ExApp: the App Store hosts only **metadata**, and the code ships
+as the Docker image named in `appinfo/info.xml` under `<docker-install>`. A
+release therefore has two artefacts — a published image and a signed metadata
+archive.
+
+## One-time setup
+
+### 1. App Store account and token
+
+Register (or sign in with GitHub) at <https://apps.nextcloud.com/account/register>,
+then create an API token at <https://apps.nextcloud.com/account/token>.
+Accounts created through GitHub have no password, so the token is the only way
+to authenticate.
+
+### 2. Code-signing certificate
+
+The key already exists on the dev server at
+`/root/.nextcloud/certificates/citizens.key` with its request next to it
+(`citizens.csr`, subject `CN=citizens` — the CN **must** equal the app id).
+**Never commit the key**; `*.key` is gitignored.
+
+Open a pull request against
+<https://github.com/nextcloud/app-certificate-requests> adding a single file:
+
+```
+citizens/citizens.csr
+```
+
+Paste the PEM contents of the CSR. Make sure your GitHub profile shows an email
+address. Turnaround is usually a few hours to three days; on merge, maintainers
+commit `citizens/citizens.crt` — that is the public certificate.
+
+> Re-issuing a certificate later **deletes every existing release**, because all
+> previous signatures become invalid. Keep this key safe and backed up.
+
+### 3. Register the app id
+
+Once the certificate is merged:
+
+```sh
+CERT=$(cat citizens.crt)
+SIGNATURE=$(echo -n "citizens" \
+  | openssl dgst -sha512 -sign /root/.nextcloud/certificates/citizens.key \
+  | openssl base64 -A)
+
+curl -X POST https://apps.nextcloud.com/api/v1/apps \
+  -H "Authorization: Token $APPSTORE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --arg c "$CERT" --arg s "$SIGNATURE" '{certificate:$c, signature:$s}')"
+```
+
+(Or use the form at <https://apps.nextcloud.com/developer/apps/new>.)
+
+### 4. GitHub repository secrets
+
+| Secret | Value |
+|---|---|
+| `APP_PRIVATE_KEY` | contents of `citizens.key` |
+| `APP_PUBLIC_CRT` | contents of `citizens.crt` |
+| `APPSTORE_TOKEN` | the API token from step 1 |
+
+The image is pushed to GHCR with the workflow's own `GITHUB_TOKEN`; make the
+package public after the first push (Packages → citizens → Package settings).
+
+## Every release
+
+```sh
+make version VERSION=0.6.0-beta.1   # all six declarations at once
+make appstore-check                 # validates info.xml the way the store does
+make lint && make test
+cd frontend && npm run build && cd ..   # bundles ship in the image; CI checks them
+git commit -am "Release 0.6.0-beta.1" && git tag v0.6.0-beta.1
+git push origin main --tags
+```
+
+Pushing the tag runs `.github/workflows/release.yml`, which:
+
+1. checks the tag matches `<version>` in `info.xml`;
+2. builds and pushes `ghcr.io/theragehero/citizens` for **amd64 and arm64**;
+3. packages `build/citizens.tar.gz` (metadata only, one top-level `citizens/`
+   folder, well under the store's 20 MB limit);
+4. signs it with `APP_PRIVATE_KEY`, attaches it to the GitHub release;
+5. publishes it to apps.nextcloud.com.
+
+A version containing `-beta` / `-alpha` is flagged as a **pre-release** on the
+store, which is what we want until retention and the participant consent notice
+ship. (A `nightly: true` release is a different mechanism — it replaces the
+previous nightly each time; we do not use it.)
+
+## Before the first publication
+
+Install the published image on a real Nextcloud through a **docker-install**
+deploy daemon (not the `manual-install` daemon used in development) and run a
+full smoke test: create an assembly, print QR codes, record from a phone, get a
+transcript and a report. HaRP is the recommended daemon on Nextcloud 32+ and
+becomes the only one in 35; if the plain HTTP image does not deploy under HaRP,
+the image needs HaRP's `start.sh` entrypoint with `frpc` bundled.
+
+Do this on a scratch instance, not on one holding real assembly data: installing
+the same app id through a different daemon replaces the existing registration.
+
+## Checklist
+
+- [ ] `make appstore-check` passes
+- [ ] `make lint && make test` pass, bundles rebuilt and committed
+- [ ] Screenshots in `img/screenshots/` still reflect the UI
+- [ ] `CHANGELOG.md` has a section for this version
+- [ ] Tag matches `<version>` and `<image-tag>`
+- [ ] Image is public on GHCR and has both architectures
+      (`docker buildx imagetools inspect ghcr.io/theragehero/citizens:<version>`)

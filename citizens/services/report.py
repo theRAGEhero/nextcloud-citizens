@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Assembly report: approved findings with evidence references (brief §42)."""
 
 from sqlalchemy import func, select

@@ -1,9 +1,16 @@
 .git
+.github
 .venv
 node_modules
 persistent_storage
 tests
 docs
+scripts
+frontend
 .app_secret
 *.md
 !README.md
+# dev seeding helper: can mint valid recorder invites, never ship it
+citizens/devtools.py
+**/__pycache__
+*.egg-info

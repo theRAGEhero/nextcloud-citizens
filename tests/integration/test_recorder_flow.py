@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Milestone 2 recorder pipeline: join → record → chunk upload → assemble.
 
 Uses real opus/webm audio generated with ffmpeg and the real assembly

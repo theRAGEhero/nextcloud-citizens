@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Admin API. Access control is enforced by the AppAPI proxy route level
 (`^api/v1/admin/.*` is registered as ADMIN): non-admin requests never reach
 this router in production. Tests exercise these endpoints directly and that

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Database engine/session management.
 
 SQLite in APP_PERSISTENT_STORAGE with WAL mode and enforced foreign keys.

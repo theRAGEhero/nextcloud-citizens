@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Milestone 1 acceptance as an API flow: 50 participants, 10 tables, 2 rounds."""
 
 

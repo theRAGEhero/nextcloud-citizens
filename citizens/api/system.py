@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Health/system endpoints."""
 
 import shutil
@@ -40,11 +42,16 @@ def health() -> dict:
     except OSError:
         disk_free_gb = None
 
+    # surfaces a misconfigured deployment (empty APP_SECRET / NEXTCLOUD_URL)
+    # that would otherwise fail silently at invite time
+    missing_env = settings.missing_required()
+
     return {
         "app": settings.app_id,
         "version": settings.app_version,
-        "status": "ok" if (db_ok and storage_ok) else "degraded",
+        "status": "ok" if (db_ok and storage_ok and not missing_env) else "degraded",
         "database": "ok" if db_ok else "error",
         "storage": "ok" if storage_ok else "error",
         "disk_free_gb": disk_free_gb,
+        "missing_environment": missing_env,
     }

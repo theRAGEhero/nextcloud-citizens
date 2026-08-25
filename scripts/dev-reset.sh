@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Delete ONLY Citizens application data (SQLite DB, recordings, logs) from the
 # dev data volume. This must NEVER touch Nextcloud data (brief §58).
 set -eu

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pydantic schemas that AI analysis output MUST match (brief §37).
 
 Invalid model output is never stored — the provider retries with a correction

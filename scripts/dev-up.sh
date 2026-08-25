@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Build the dev image and (re)start the Citizens dev container with the
 # source bind-mounted and uvicorn auto-reload. Nextcloud reaches it as
 # http://nc_app_citizens:23000 on the shared docker network.

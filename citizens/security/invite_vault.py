@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Reversible at-rest encryption for invite tokens.
 
 Join verification still runs against the SHA-256 hash; this vault only exists

@@ -1,7 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Application configuration from environment variables (provided by AppAPI)."""
 
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,7 +14,7 @@ class Settings(BaseSettings):
 
     # Provided by AppAPI / the container environment
     app_id: str = "citizens"
-    app_version: str = "0.5.2"
+    app_version: str = "0.6.0-beta.1"
     app_host: str = "0.0.0.0"
     app_port: int = 23000
     app_secret: str = ""
@@ -22,8 +25,31 @@ class Settings(BaseSettings):
     citizens_log_level: str = "INFO"
     citizens_dev: bool = False
     # ONLY for local browser tests: disables AppAPI signature auth entirely.
-    # Never set on an instance reachable by anyone else.
+    # Honored solely against a local Nextcloud (see auth_disabled()), so a
+    # stray environment variable cannot open up a real deployment.
     citizens_insecure_no_auth: bool = False
+
+    def auth_disabled(self) -> bool:
+        """True only for the local browser-test setup: the flag is ignored
+        whenever the app is wired to a non-local Nextcloud."""
+        if not self.citizens_insecure_no_auth:
+            return False
+        host = urlparse(self.nextcloud_url).hostname if self.nextcloud_url else ""
+        return not self.nextcloud_url or host in LOCAL_HOSTS
+
+    def missing_required(self) -> list[str]:
+        """Environment AppAPI always provides; empty values mean a broken
+        deployment that would otherwise look healthy (invite links built from
+        an empty URL, invite encryption keyed on an empty secret)."""
+        missing = []
+        if not self.app_secret:
+            missing.append("APP_SECRET")
+        if not self.nextcloud_url:
+            missing.append("NEXTCLOUD_URL")
+        return missing
+
+
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "host.docker.internal"}
 
 
 @lru_cache

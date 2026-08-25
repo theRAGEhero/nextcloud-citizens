@@ -30,3 +30,11 @@ logs/
 .idea/
 .vscode/
 .DS_Store
+
+# App Store packaging output
+build/
+# Playwright artifacts
+frontend/test-results/
+frontend/playwright-report/
+# code-signing key for the App Store (NEVER commit)
+*.key

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Recording state machine (brief §24). Transitions are explicit and resumable."""
 
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Transcription provider abstraction (brief §29, §32).
 
 Provider adapters convert provider-specific responses into ONE normalized

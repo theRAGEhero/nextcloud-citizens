@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /*
  * Client-side diagnostic logger: entries persist to IndexedDB alongside the
  * audio chunks and ship to the server opportunistically (same offline-first

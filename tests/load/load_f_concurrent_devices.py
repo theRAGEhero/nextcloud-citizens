@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Test F (brief §56): ~10 concurrent table devices against a live test env.
 
 NOT a pytest test — it needs the throwaway instance from

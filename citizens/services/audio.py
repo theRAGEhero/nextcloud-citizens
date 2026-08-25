@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Audio assembly and validation (brief §23).
 
 Chunks from one continuous MediaRecorder session concatenate into a valid

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Deepgram batch transcription adapter.
 
 API verified 2026-08-23: POST https://api.deepgram.com/v1/listen with raw

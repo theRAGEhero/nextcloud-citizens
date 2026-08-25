@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Analysis chain: transcription → table findings → cross-table → review → report.
 Also the recorder duplicate-recording guard (one healthy recording per table+round).
 """

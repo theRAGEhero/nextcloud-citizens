@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """PDF rendering of the assembly report (fpdf2).
 
 Institutional layout: compact branded header (logo + organization name),

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /* Deliberation-report vocabulary for finding types — shared by the organizer
  * app and the recorder report screen. DB type values never change; only how
  * they are presented. Mirrors citizens/services/report.py. */

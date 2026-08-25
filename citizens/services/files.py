@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Audio inventory, deletion and portable session export (Files tab).
 
 Deleting audio is deliberately narrow: the audio bytes go, the recording row,

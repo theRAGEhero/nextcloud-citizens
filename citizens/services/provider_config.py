@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Provider configuration (STT + analysis) in Nextcloud AppConfig.
 
 API keys are stored with the `sensitive` flag (encrypted by Nextcloud, brief

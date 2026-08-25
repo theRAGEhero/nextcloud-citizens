@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Closing a session (interim → final, frozen snapshot, recording lock) and the
 Files tab (inventory, audio deletion, portable export)."""
 

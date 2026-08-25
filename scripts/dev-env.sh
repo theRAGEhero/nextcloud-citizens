@@ -1,10 +1,12 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Shared development configuration. Sourced by the other scripts.
 set -eu
 
 APP_ID="citizens"
 APP_NAME="Citizens"
-APP_VERSION="0.5.2"
+APP_VERSION="0.6.0-beta.1"
 APP_PORT="23000"
 CONTAINER="nc_app_citizens"
 IMAGE="citizens-dev"

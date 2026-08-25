@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Small in-memory rate limiter for public endpoints (single-process app).
 
 Not a substitute for infrastructure-level protection, but keeps token

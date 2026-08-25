@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /*
  * IndexedDB persistence for the recorder. Chunks are written here BEFORE any
  * upload attempt — local storage is the source of truth (brief §17.3).

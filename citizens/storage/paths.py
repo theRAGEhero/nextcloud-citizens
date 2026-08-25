@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Layout of the ExApp's persistent storage.
 
 All Citizens data lives under APP_PERSISTENT_STORAGE (brief §3.3); the app

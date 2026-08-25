@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """closing a session, frozen final report snapshot, audio deletion marker
 
 Revision ID: 0010

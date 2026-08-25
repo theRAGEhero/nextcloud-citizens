@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Start/stop/seed a throwaway Citizens instance for Playwright browser tests.
 # Runs WITHOUT AppAPI auth on 127.0.0.1:23100 with an ephemeral data volume.
 set -eu

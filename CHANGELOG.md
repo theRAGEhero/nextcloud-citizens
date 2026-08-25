@@ -4,6 +4,46 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+## [0.6.0-beta.1] — 2026-08-25
+
+First release prepared for the Nextcloud App Store. Everything below is in
+addition to the assembly, recording, transcription, analysis and reporting
+features built up to 0.5.2.
+
+### Packaging
+- **The runtime image is now self-contained.** It previously omitted `css/` and
+  `recorder_static/`, which worked only because development bind-mounts the
+  source over the image — a clean deployment would have served an unstyled
+  organizer UI and a dead phone recorder.
+- Store metadata completed: `<docker-install>` pointing at
+  `ghcr.io/theragehero/citizens`, SPDX licence identifier, repository,
+  documentation and screenshot links, and a plain data-processing disclosure
+  naming what leaves the server and when.
+- Added `LICENSE` (AGPL-3.0-or-later) and SPDX headers across the sources.
+- One command sets the version everywhere it is declared (`make version`), with
+  a test that fails if the six declarations drift apart.
+- `make appstore` packages the signed-release archive; `make appstore-check`
+  validates `info.xml` exactly the way the store does (XSLT, then schema).
+- GitHub Actions: lint + tests, a check that the committed frontend bundles
+  match their sources, multi-arch (amd64/arm64) image publishing, and the
+  App Store release.
+
+### Hardening
+- The container runs as a non-root user, declares a healthcheck, binds all
+  interfaces by default, and no longer ships test tooling or the dev seeding
+  helper.
+- `CITIZENS_INSECURE_NO_AUTH` is now ignored unless Nextcloud is a loopback
+  address, so a stray environment variable cannot disable authentication on a
+  real deployment.
+- Missing `APP_SECRET` or `NEXTCLOUD_URL` is reported in the log and in
+  `/api/v1/health` instead of failing silently later.
+- Dependencies carry upper bounds so rebuilding a tag stays reproducible.
+
+### Documentation
+- Administration guide, contribution guide and security policy; the README is
+  written for administrators; the development doc no longer describes a private
+  server.
+
 ### QR sheet copy button fix — 2026-08-25 (v0.5.2)
 
 - Fixed the oversized copy icon on the QR codes tab: a stylesheet rule meant

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Development/test helpers. Usage: python -m citizens.devtools seed-recorder-test
 
 Creates a TEST assembly with one round and two tables, generates a table-1

@@ -1,76 +1,61 @@
 # Development environment
 
-Inventory of the existing server, taken 2026-08-23 before any Citizens work
-(brief §3.1). This is a shared production-ish host: **downtime is acceptable,
-data loss is not.** Citizens must never touch Nextcloud user files.
+Citizens is a Nextcloud **ExApp**: a container that Nextcloud talks to through
+the AppAPI proxy. For development you run that container yourself and register
+it with a `manual-install` daemon, so you can edit code and reload instantly.
 
-## Nextcloud
+## Requirements
 
-| Item | Value |
+* A Nextcloud instance (32 or newer) with the **AppAPI** app enabled
+* Docker, on the same host, able to join the Nextcloud container's network
+* Node 22+ for the frontend build
+
+## One-time setup
+
+1. Copy the settings you need into `scripts/dev-env.sh` — the Nextcloud
+   container name, the Docker network it is on, and the public URL of the
+   instance. Everything else has sane defaults.
+2. Start the app container and register it:
+
+   ```sh
+   make up        # builds the image, runs it with the source bind-mounted
+   make register  # registers the manual-install daemon + the ExApp in AppAPI
+   ```
+
+3. Open Nextcloud; "Citizens" appears in the top menu.
+
+`make up` mounts the repository over `/app` and runs uvicorn with `--reload`,
+so Python changes apply immediately. Frontend changes need `npm run build` in
+`frontend/` (the bundles in `js/`, `css/` and `recorder_static/` are committed
+because the runtime image ships them).
+
+## Everyday commands
+
+| Command | What it does |
 |---|---|
-| Version | **34.0.3.2** (`nextcloud:34-apache`; upgraded 32→33→34 on 2026-08-23, backups + rollback in `/root/backups/nextcloud-upgrade-20260823/`) |
-| Container | `nextcloud`, published on `127.0.0.1`-reachable `0.0.0.0:8081->80` |
-| Database | `nextcloud-db` (postgres:15), db `nextcloud`, user `oc_admin` |
-| Cache | `nextcloud-redis` (redis:7-alpine) |
-| Docker network | `nextcloud_nextcloud-network` |
-| Compose file | `/root/nextcloud/docker-compose.yml` |
-| Volumes | `nextcloud_nextcloud_data` → `/var/www/html` (data dir **119 GB**), `..._config` → `/var/www/html/config`, `..._apps` → `/var/www/html/custom_apps` |
-| Public URL | `https://cloud.democracyinnovators.com` (trusted domains: `localhost`, `cloud.democracyinnovators.com`; `overwritehost`/`overwriteprotocol` set) |
-| Maintenance | off; no pending DB upgrade |
+| `make up` | rebuild + restart the dev container |
+| `make logs` | tail the container logs (pretty structlog output) |
+| `make test` | run the Python suite inside the image |
+| `make lint` | ruff |
+| `make appstore-check` | validate `appinfo/info.xml` the way the App Store does |
+| `make dev-reset` | wipe **only** Citizens data (asks first) |
 
-## AppAPI
+## Testing the phone recorder
 
-- `app_api` v34.0.0 installed and enabled (auto-updated with the server upgrade).
-- `manual_install` deploy daemon registered (host = `nc_app_citizens`); the
-  Citizens ExApp is registered and enabled, its container joins
-  `nextcloud_nextcloud-network`, and Nextcloud PHP-proxies
-  `/index.php/apps/app_api/proxy/citizens/*` to it.
+`sh scripts/browser-test-env.sh start` launches a throwaway instance on
+`127.0.0.1:23100` with authentication disabled (only honoured against a local
+Nextcloud) and a seeded assembly, which the Playwright specs in
+`tests/browser/` drive with a fake microphone. Stop it with
+`sh scripts/browser-test-env.sh stop`.
 
-## HTTPS / reverse proxy
+## Notes that save time
 
-- Host `nginx` (systemd service) terminates TLS. Port 443 is owned by an SNI
-  **stream demux**; the Nextcloud vhost listens on `127.0.0.1:8443 ssl proxy_protocol`
-  and proxies `/` → `http://127.0.0.1:8081`.
-- Vhost: `/etc/nginx/sites-available/cloud.democracyinnovators.com` (symlinked in
-  `sites-enabled`). `client_max_body_size 16G`, proxy timeouts 300 s.
-- Certificates: Let's Encrypt via certbot cron. `status.php` returns HTTP 200.
-- **Constraint:** the vhost sets no `Upgrade`/`Connection` headers →
-  **WebSockets will not traverse this proxy.** Citizens V1 therefore uses HTTP
-  polling / short posts for live features. Enabling WebSockets later requires a
-  careful vhost edit (stop-and-ask change, see plan safety rules).
-
-## Host resources
-
-| Item | Value |
-|---|---|
-| OS | Debian, kernel 6.1.0-38-amd64 |
-| CPU | 4 cores |
-| RAM | 5.8 GiB total; ~1.3 GiB available at inspection, **swap already in use (7.2 GiB)** |
-| Disk | `/dev/sda3` 391 GB, **91 GB free** (76 % used) |
-| Docker | ~30 containers (Democracy Routes stack, Jitsi/LiveKit, blogs, an Ollama app, …) share this host |
-
-Consequences for Citizens:
-
-- Container must be lean; run with a memory limit (≤ 512 MB).
-- ffmpeg / analysis jobs run strictly sequentially (single job worker).
-- **No local LLM inference on this host** — analysis goes to remote
-  OpenAI-compatible endpoints (Mistral default; Ollama Cloud etc. via base URL).
-- Audio storage must be size-conscious; retention cleanup matters.
-
-## Backup
-
-- No pre-existing Nextcloud backup mechanism was found on the host.
-- Pre-Citizens backup created and restore-tested on 2026-08-23:
-  `/root/backups/nextcloud-pre-citizens-20260823/` — DB (`pg_dump -Fc`,
-  verified with `pg_restore --list`), config + custom_apps volume tars
-  (verified with `tar -t`), compose file, container inspects, app list, and
-  `RESTORE.md` with the full restore procedure.
-- The 119 GB data volume is **not** duplicated (exceeds free disk). Accepted
-  risk: Citizens never touches user files; AppAPI registration writes only DB
-  and config, both covered.
-
-## Test identity
-
-- Dedicated Nextcloud user `citizens-test` for all UI testing.
-- The admin account is used only for installation, AppAPI configuration and
-  Citizens admin settings.
+* Route regexes in `appinfo/info.xml` are matched **without** a leading slash on
+  AppAPI ≤33 and **with** one on 34+; the escaped form (`^api\/v1\/.*`) works on
+  both. Order matters — narrow routes before catch-alls.
+* The AppAPI proxy sends `default-src 'none'` as CSP for proxied responses, so
+  the recorder page ships its own CSP header, and its path must end in `.html`
+  for the proxy to inject a script nonce.
+* Assets are cached by the proxy for an hour; the recorder busts this with the
+  app version in its URLs, which is why the version must be bumped for a UI
+  change to reach phones immediately.

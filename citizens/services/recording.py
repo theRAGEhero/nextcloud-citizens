@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Recorder sessions, recordings and chunk intake (brief §14, §17, §23)."""
 
 import hashlib

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Public recorder API (PUBLIC AppAPI routes; recorder-session bearer auth).
 
 A recorder session can only ever: read its assembly/round state, create

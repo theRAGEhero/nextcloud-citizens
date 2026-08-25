@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Register the manual-install deploy daemon (if missing) and the Citizens
 # ExApp with AppAPI. The dev container must already be running (dev-up.sh).
 #

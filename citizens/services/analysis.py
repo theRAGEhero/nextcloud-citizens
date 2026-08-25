@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """AI analysis: per-table structured extraction and cross-table clustering
 (brief §36–§39). Every table finding must cite real transcript segments;
 anything without valid evidence is dropped, never stored.
