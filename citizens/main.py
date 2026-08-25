@@ -14,6 +14,7 @@ from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from citizens.api.admin import router as admin_router
 from citizens.api.assemblies import router as assemblies_router
+from citizens.api.files import router as files_router
 from citizens.api.findings import router as findings_router
 from citizens.api.public_recorder import router as public_recorder_router
 from citizens.api.recorder_page import router as recorder_page_router
@@ -100,6 +101,7 @@ def create_app(with_auth: bool = True) -> FastAPI:
     app.include_router(transcripts_router, prefix="/api/v1")
     app.include_router(findings_router, prefix="/api/v1")
     app.include_router(reports_router, prefix="/api/v1")
+    app.include_router(files_router, prefix="/api/v1")
     app.include_router(recorder_page_router)
     recorder_static = Path(__file__).resolve().parent.parent / "recorder_static"
     if recorder_static.is_dir():

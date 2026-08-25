@@ -68,6 +68,7 @@ class AssemblyOut(BaseModel):
     expected_participants: int
     default_table_count: int
     analysis_instructions: str
+    closed_at: datetime | None
     created_by: str
     created_at: datetime
 

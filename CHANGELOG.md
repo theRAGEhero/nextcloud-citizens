@@ -4,6 +4,27 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Closing a session, Files tab, interim vs final report — 2026-08-25 (v0.5.0)
+
+- **A report is now interim until you close the session.** The Report tab says
+  so plainly ("Interim report — 1 of 3 tables have completed all rounds") and
+  the PDF/Markdown/JSON downloads stay disabled until then. Closing creates the
+  **final report** (stamped FINAL with a "N of M tables contributed" coverage
+  line), stops phones from recording, and runs a last analysis pass over the
+  tables that did participate. Reopening is possible for a late table.
+- **The published report freezes at closing**: participants keep reading the
+  version from when you closed, even if you reopen the session and new content
+  arrives. Closing again republishes the updated version.
+- **New Files tab per assembly**: every table's audio with duration, size and
+  state; download one table, download all audio as a ZIP, or **export the full
+  session** (manifest with checksums, audio, transcripts, findings and the
+  report — portable to another server). Audio can be deleted per table or for
+  the whole session **without deleting the session**: transcripts, findings and
+  the report are kept.
+- **QR sheet**: a proper "Copy link" button per table replaces the tiny icon.
+- Fixed: assemblies stayed "Draft" forever in independent mode — the status now
+  moves to Active on the first recording and Complete when closed.
+
 ### Independent mode: auto-advancing rounds, table summaries, auto-report — 2026-08-25 (v0.4.1)
 
 - **Rounds advance automatically per table**: when a round's planned time

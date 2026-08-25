@@ -45,6 +45,11 @@ def assembled_dir(root: Path, assembly_id: str) -> Path:
     return root / "assembled" / assembly_id
 
 
+def exports_dir(root: Path, assembly_id: str) -> Path:
+    """Generated ZIP archives (audio bundle, portable session export)."""
+    return root / "exports" / assembly_id
+
+
 def device_log_path(root: Path, session_id: str) -> Path:
     """Per-recorder-session shipped client logs (JSONL). session_id is a
     server-generated UUID, never client input."""

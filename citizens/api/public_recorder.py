@@ -128,11 +128,17 @@ def recording_status(recording_id: str, recorder_session: RecorderSess, session:
 
 
 def _published_report(session: Session, recorder_session: RecorderSession) -> tuple:
+    from citizens.services.lifecycle import frozen_report
     from citizens.services.report import build_report
 
     assembly = session.get(Assembly, recorder_session.assembly_id)
     if assembly is None or not _report_available(session, assembly):
         raise HTTPException(status_code=404, detail="No published report for this assembly")
+    # once the session was closed, participants read the frozen version — a
+    # later reopening must never change the report under them
+    snapshot = frozen_report(assembly)
+    if snapshot is not None:
+        return assembly, snapshot
     # approved findings only — AI drafts never reach participants
     return assembly, build_report(session, assembly, include_drafts=False)
 
@@ -255,6 +261,9 @@ def _report_available(session: Session, assembly: Assembly) -> bool:
     completed every round (the organizer may still publish earlier)."""
     if assembly.report_published_at is not None:
         return True
-    return assembly.recording_mode == "independent" and rec_svc.assembly_complete(
-        session, assembly
-    )
+    if assembly.recording_mode != "independent":
+        return False
+    # a closed session with a frozen report stays readable through a reopen
+    if assembly.final_report_json:
+        return True
+    return rec_svc.assembly_complete(session, assembly)

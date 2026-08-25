@@ -4,6 +4,7 @@ import {
 	mdiBrain,
 	mdiDeleteOutline,
 	mdiFileDocumentOutline,
+	mdiFolderMusicOutline,
 	mdiMonitorEye,
 	mdiQrcode,
 	mdiTableFurniture,
@@ -14,6 +15,7 @@ import { onMounted, ref } from 'vue'
 import { api } from '../api'
 import type { AssemblyDetail, InviteGenerated } from '../types'
 import AnalysisTab from './AnalysisTab.vue'
+import FilesTab from './FilesTab.vue'
 import OverviewTab from './OverviewTab.vue'
 import ParticipantsTab from './ParticipantsTab.vue'
 import ReportTab from './ReportTab.vue'
@@ -31,7 +33,9 @@ import { toast } from './ui/toast'
 const props = defineProps<{ assemblyId: string; freshInvites?: InviteGenerated[] }>()
 const emit = defineEmits<{ changed: []; deleted: []; invitesConsumed: [] }>()
 
-type Tab = 'overview' | 'rounds' | 'participants' | 'tables' | 'qr' | 'monitor' | 'analysis' | 'report'
+type Tab =
+	| 'overview' | 'rounds' | 'participants' | 'tables' | 'qr' | 'monitor'
+	| 'analysis' | 'report' | 'files'
 
 const assembly = ref<AssemblyDetail | null>(null)
 const error = ref('')
@@ -48,6 +52,7 @@ const TABS: Array<{ id: Tab; label: string; icon: string }> = [
 	{ id: 'monitor', label: 'Live', icon: mdiMonitorEye },
 	{ id: 'analysis', label: 'Analysis', icon: mdiBrain },
 	{ id: 'report', label: 'Report', icon: mdiFileDocumentOutline },
+	{ id: 'files', label: 'Files', icon: mdiFolderMusicOutline },
 ]
 
 async function reload(): Promise<void> {
@@ -124,7 +129,8 @@ async function deleteAssembly(): Promise<void> {
 				@consumed="emit('invitesConsumed')" />
 			<MonitorTab v-else-if="tab === 'monitor'" :assembly="assembly" @changed="reload" />
 			<AnalysisTab v-else-if="tab === 'analysis'" :assembly="assembly" />
-			<ReportTab v-else :assembly="assembly" />
+			<ReportTab v-else-if="tab === 'report'" :assembly="assembly" @changed="reload" />
+			<FilesTab v-else :assembly="assembly" />
 		</template>
 
 		<CzConfirm

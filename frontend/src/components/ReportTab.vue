@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import {
 	mdiCellphoneLink,
+	mdiCheckCircleOutline,
 	mdiCodeJson,
 	mdiDownloadOutline,
 	mdiFileDocumentOutline,
 	mdiFilePdfBox,
+	mdiLockOpenVariantOutline,
 } from '@mdi/js'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { api, BASE } from '../api'
 import { groupByType, TYPE_LABELS } from '../labels'
 import type { AssemblyDetail, ReportData } from '../types'
@@ -17,12 +19,52 @@ import CzSkeleton from './ui/CzSkeleton.vue'
 import { toast } from './ui/toast'
 
 const props = defineProps<{ assembly: AssemblyDetail }>()
+const emit = defineEmits<{ changed: [] }>()
 
 const report = ref<ReportData | null>(null)
 const error = ref('')
 const includeDrafts = ref(false)
 const confirmPublish = ref(false)
+const confirmClose = ref(false)
 const publishing = ref(false)
+const closing = ref(false)
+
+const isFinal = computed(() => !!report.value?.is_final)
+const progress = computed(() => report.value?.progress)
+
+function closedDate(): string {
+	const raw = report.value?.closed_at
+	return raw ? new Date(raw).toLocaleDateString() : ''
+}
+
+async function closeSession(): Promise<void> {
+	confirmClose.value = false
+	closing.value = true
+	try {
+		await api.closeSession(props.assembly.id)
+		toast('Session closed — the final report is ready')
+		await reload()
+		emit('changed')
+	} catch (err) {
+		error.value = err instanceof Error ? err.message : String(err)
+	} finally {
+		closing.value = false
+	}
+}
+
+async function reopenSession(): Promise<void> {
+	closing.value = true
+	try {
+		await api.reopenSession(props.assembly.id)
+		toast('Session reopened — tables can record again')
+		await reload()
+		emit('changed')
+	} catch (err) {
+		error.value = err instanceof Error ? err.message : String(err)
+	} finally {
+		closing.value = false
+	}
+}
 
 async function togglePublish(): Promise<void> {
 	confirmPublish.value = false
@@ -93,17 +135,64 @@ const hasContent = () =>
 	<div>
 		<div v-if="error" class="cz-error">{{ error }}</div>
 
+		<div v-if="report" class="cz-card cz-nextstep" style="margin-bottom: 16px">
+			<div>
+				<template v-if="isFinal">
+					<strong>Final report · closed {{ closedDate() }}</strong>
+					<span class="cz-muted" style="display: block; font-size: 13px; margin-top: 2px">
+						The session is closed: tables can no longer record, and this is the
+						definitive report. Participants keep reading this version even if you reopen.
+					</span>
+				</template>
+				<template v-else-if="progress?.complete">
+					<strong style="color: var(--cz-green)">All {{ progress.tables_expected }} tables have finished.</strong>
+					<span class="cz-muted" style="display: block; font-size: 13px; margin-top: 2px">
+						Close the session to create the final report and enable the downloads.
+					</span>
+				</template>
+				<template v-else>
+					<strong>Interim report — {{ progress?.tables_complete ?? 0 }} of
+						{{ progress?.tables_expected ?? 0 }} tables have completed all rounds</strong>
+					<span class="cz-muted" style="display: block; font-size: 13px; margin-top: 2px">
+						This is a preview of an assembly still in progress. Closing the session
+						creates the final report and enables the downloads — you can reopen later.
+					</span>
+				</template>
+			</div>
+			<CzButton
+				v-if="!isFinal"
+				variant="primary"
+				:icon="mdiCheckCircleOutline"
+				:disabled="closing"
+				@click="confirmClose = true">
+				Close session &amp; create final report
+			</CzButton>
+			<CzButton
+				v-else
+				variant="tertiary"
+				:icon="mdiLockOpenVariantOutline"
+				:disabled="closing"
+				@click="reopenSession">
+				Reopen session
+			</CzButton>
+		</div>
+
 		<div class="cz-row cz-row--spread" style="margin-bottom: 16px">
 			<label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
 				<input v-model="includeDrafts" type="checkbox" />
 				Include unreviewed drafts (clearly marked)
 			</label>
 			<div class="cz-row">
-				<CzButton small :icon="mdiFilePdfBox" @click="downloadPdf">PDF</CzButton>
-				<CzButton small :icon="mdiDownloadOutline" @click="downloadMarkdown">Markdown</CzButton>
-				<CzButton small :icon="mdiCodeJson" @click="downloadJson">JSON</CzButton>
+				<CzButton small :icon="mdiFilePdfBox" :disabled="!isFinal" @click="downloadPdf">PDF</CzButton>
+				<CzButton small :icon="mdiDownloadOutline" :disabled="!isFinal" @click="downloadMarkdown">
+					Markdown
+				</CzButton>
+				<CzButton small :icon="mdiCodeJson" :disabled="!isFinal" @click="downloadJson">JSON</CzButton>
 			</div>
 		</div>
+		<p v-if="!isFinal" class="cz-muted" style="margin: -8px 0 16px; font-size: 13px; text-align: right">
+			Downloads become available once the session is closed.
+		</p>
 
 		<div v-if="report" class="cz-card" style="margin-bottom: 16px">
 			<div class="cz-row cz-row--spread">
@@ -231,6 +320,17 @@ const hasContent = () =>
 				{{ report.methodology_note }}
 			</p>
 		</template>
+
+		<CzConfirm
+			v-if="confirmClose && report"
+			title="Close the session and create the final report?"
+			:message="(progress?.tables_missing?.length
+				? `Tables ${progress.tables_missing.join(', ')} never recorded — they will not appear in the final report. `
+				: '') + 'Tables can no longer record after closing, and the report becomes final. You can reopen the session later if a late table needs to record.'"
+			confirm-label="Close session"
+			:danger="false"
+			@confirm="closeSession"
+			@cancel="confirmClose = false" />
 
 		<CzConfirm
 			v-if="confirmPublish"

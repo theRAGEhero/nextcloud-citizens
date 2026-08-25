@@ -49,6 +49,10 @@ def test_phone_report_gated_by_publication(client):
 
 def test_organizer_pdf_download(client):
     assembly = _make_assembly(client, "TEST Organizer PDF")
+    # interim: no export until the organizer closes the session
+    assert client.get(f"/api/v1/assemblies/{assembly['id']}/report.pdf").status_code == 409
+
+    client.post(f"/api/v1/assemblies/{assembly['id']}/close")
     response = client.get(f"/api/v1/assemblies/{assembly['id']}/report.pdf")
     assert response.status_code == 200
     assert response.content.startswith(b"%PDF")

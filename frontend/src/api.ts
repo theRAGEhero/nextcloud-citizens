@@ -2,6 +2,8 @@ import type {
 	Assembly,
 	AssemblyCreated,
 	AssemblyDetail,
+	AssemblyProgress,
+	FilesListing,
 	Invite,
 	InviteGenerated,
 	Participant,
@@ -132,6 +134,25 @@ export const api = {
 		request<{ published_at: string }>('POST', `/api/v1/assemblies/${assemblyId}/report/publish`),
 	unpublishReport: (assemblyId: string) =>
 		request<void>('DELETE', `/api/v1/assemblies/${assemblyId}/report/publish`),
+	closeSession: (assemblyId: string) =>
+		request<{ closed_at: string; progress: AssemblyProgress }>(
+			'POST',
+			`/api/v1/assemblies/${assemblyId}/close`,
+		),
+	reopenSession: (assemblyId: string) =>
+		request<void>('DELETE', `/api/v1/assemblies/${assemblyId}/close`),
+	refreshFinalReport: (assemblyId: string) =>
+		request<{ final_report_at: string }>('POST', `/api/v1/assemblies/${assemblyId}/report/refresh`),
+
+	listFiles: (assemblyId: string) =>
+		request<FilesListing>('GET', `/api/v1/assemblies/${assemblyId}/files`),
+	deleteRecordingAudio: (recordingId: string) =>
+		request<{ freed_bytes: number }>('DELETE', `/api/v1/recordings/${recordingId}/audio`),
+	deleteAssemblyAudio: (assemblyId: string) =>
+		request<{ recordings: number; freed_bytes: number }>(
+			'DELETE',
+			`/api/v1/assemblies/${assemblyId}/audio`,
+		),
 
 	getTranscript: (recordingId: string) =>
 		request<TranscriptData>('GET', `/api/v1/recordings/${recordingId}/transcript`),

@@ -23,8 +23,38 @@ export interface Assembly {
 	expected_participants: number
 	default_table_count: number
 	analysis_instructions: string
+	closed_at: string | null
 	created_by: string
 	created_at: string
+}
+
+export interface AssemblyProgress {
+	tables_expected: number
+	tables_complete: number
+	tables_contributed: number
+	tables_missing: number[]
+	rounds_total: number
+	rounds_analyzed: number
+	complete: boolean
+}
+
+export interface FileEntry {
+	recording_id: string
+	table_number: number
+	state: string
+	mime_type: string
+	duration_seconds: number | null
+	size_bytes: number
+	sha256: string
+	created_at: string | null
+	audio_available: boolean
+	audio_deleted_at: string | null
+	has_transcript: boolean
+}
+
+export interface FilesListing {
+	totals: { recordings: number; audio_bytes: number; audio_deleted: number }
+	rounds: Array<{ id: string; position: number; title: string; tables: FileEntry[] }>
 }
 
 export interface AssemblyDetail extends Assembly {
@@ -187,6 +217,9 @@ export interface ReportData {
 	methodology_note: string
 	include_drafts: boolean
 	published_at: string | null
+	closed_at: string | null
+	is_final: boolean
+	progress: AssemblyProgress
 	rounds: Array<{
 		position: number
 		title: string

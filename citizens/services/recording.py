@@ -98,6 +98,34 @@ def assembly_complete(session: Session, assembly) -> bool:
     return True
 
 
+def assembly_progress(session: Session, assembly) -> dict:
+    """Participation coverage — drives interim/final wording everywhere."""
+    expected = list(range(1, assembly.default_table_count + 1))
+    rounds = list(assembly.rounds)
+    rounds_by_table: dict[int, set[str]] = {}
+    for recording in session.execute(
+        select(Recording).where(
+            Recording.assembly_id == assembly.id,
+            Recording.state.in_(COMPLETED_STATES),
+        )
+    ).scalars():
+        rounds_by_table.setdefault(recording.table_number, set()).add(recording.round_id)
+
+    round_ids = {round_.id for round_ in rounds}
+    tables_complete = [
+        number for number, done in rounds_by_table.items() if round_ids and round_ids.issubset(done)
+    ]
+    return {
+        "tables_expected": len(expected),
+        "tables_complete": len(tables_complete),
+        "tables_contributed": len(rounds_by_table),
+        "tables_missing": [n for n in expected if n not in rounds_by_table],
+        "rounds_total": len(rounds),
+        "rounds_analyzed": sum(1 for round_ in rounds if round_.analysis_summary),
+        "complete": assembly_complete(session, assembly),
+    }
+
+
 def start_recording(
     session: Session, recorder_session: RecorderSession, round_id: str, mime_type: str
 ) -> Recording:
@@ -109,6 +137,13 @@ def start_recording(
     ).scalar_one_or_none()
     if table is None:
         raise HTTPException(status_code=422, detail="This round has no table with your number")
+
+    # a closed session accepts no new audio: the report is already final
+    if round_.assembly.closed_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="This assembly has been closed by the organizer",
+        )
 
     # orchestrated assemblies record only while the facilitator has the round
     # open; independent assemblies let each table record on its own schedule
@@ -144,6 +179,10 @@ def start_recording(
         started_at=utcnow(),
     )
     transition(recording, "RECORDING")
+    # independent assemblies never "start" a round, so this is the only signal
+    # that the assembly is under way (the badge would stay Draft otherwise)
+    if round_.assembly.status in ("DRAFT", "READY"):
+        round_.assembly.status = "ACTIVE"
     session.add(recording)
     session.flush()
     log.info(

@@ -2,13 +2,14 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
 from citizens.db.models.base import utcnow
 from citizens.db.session import get_db
 from citizens.security.identity import CurrentUser
+from citizens.services import lifecycle
 from citizens.services.assemblies import get_owned_assembly
 from citizens.services.audit import record_audit_event
 from citizens.services.branding import logo_path, organization_name
@@ -22,6 +23,15 @@ DB = Annotated[Session, Depends(get_db)]
 
 def _report_filename(name: str, ext: str) -> str:
     return f"{name[:40].replace(' ', '-')}-report.{ext}"
+
+
+def _require_closed(assembly) -> None:
+    """Exports are the final artifact: they exist once the session is closed."""
+    if assembly.closed_at is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Close the session to create the final report",
+        )
 
 
 @router.get("/assemblies/{assembly_id}/report")
@@ -43,6 +53,7 @@ def assembly_report_markdown(
     include_drafts: Annotated[bool, Query()] = False,
 ):
     assembly = get_owned_assembly(session, assembly_id, user)
+    _require_closed(assembly)
     markdown = render_markdown(build_report(session, assembly, include_drafts=include_drafts))
     return PlainTextResponse(
         markdown,
@@ -62,6 +73,7 @@ def assembly_report_pdf(
     include_drafts: Annotated[bool, Query()] = False,
 ):
     assembly = get_owned_assembly(session, assembly_id, user)
+    _require_closed(assembly)
     pdf = render_pdf(
         build_report(session, assembly, include_drafts=include_drafts),
         logo_path(),
@@ -75,6 +87,45 @@ def assembly_report_pdf(
                 f'attachment; filename="{_report_filename(assembly.name, "pdf")}"'
         },
     )
+
+
+@router.post("/assemblies/{assembly_id}/close")
+def close_session(assembly_id: str, user: CurrentUser, session: DB):
+    """Finish the assembly: no more recordings, and the report becomes final
+    (frozen, so reopening cannot change what participants already read)."""
+    assembly = get_owned_assembly(session, assembly_id, user)
+    lifecycle.close_assembly(session, assembly)
+    record_audit_event(
+        session, "assembly_closed", "assembly", assembly.id, actor=user,
+        data=lifecycle.assembly_progress(session, assembly),
+    )
+    return {
+        "closed_at": assembly.closed_at.isoformat(),
+        "progress": lifecycle.assembly_progress(session, assembly),
+    }
+
+
+@router.delete("/assemblies/{assembly_id}/close", status_code=204)
+def reopen_session(assembly_id: str, user: CurrentUser, session: DB):
+    assembly = get_owned_assembly(session, assembly_id, user)
+    lifecycle.reopen_assembly(session, assembly)
+    record_audit_event(session, "assembly_reopened", "assembly", assembly.id, actor=user)
+
+
+@router.post("/assemblies/{assembly_id}/report/refresh")
+def refresh_final_report(assembly_id: str, user: CurrentUser, session: DB):
+    """Re-freeze the published version from the current content."""
+    assembly = get_owned_assembly(session, assembly_id, user)
+    _require_closed(assembly)
+    lifecycle.snapshot_final_report(session, assembly)
+    record_audit_event(session, "final_report_refreshed", "assembly", assembly.id, actor=user)
+    return {"final_report_at": assembly.final_report_at.isoformat()}
+
+
+@router.get("/assemblies/{assembly_id}/progress")
+def assembly_progress(assembly_id: str, user: CurrentUser, session: DB):
+    assembly = get_owned_assembly(session, assembly_id, user)
+    return lifecycle.assembly_progress(session, assembly)
 
 
 @router.post("/assemblies/{assembly_id}/report/publish")

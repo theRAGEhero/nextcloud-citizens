@@ -31,6 +31,12 @@ class Assembly(Base):
     analysis_instructions: Mapped[str] = mapped_column(Text, default="")
     # when set, table phones may view/download the (approved-findings) report
     report_published_at: Mapped[datetime | None] = mapped_column(TZDateTime())
+    # the organizer declared the assembly finished: no new recordings, and the
+    # report becomes final (a snapshot is frozen so reopening cannot change
+    # what participants already read)
+    closed_at: Mapped[datetime | None] = mapped_column(TZDateTime())
+    final_report_json: Mapped[str | None] = mapped_column(Text)
+    final_report_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow, onupdate=utcnow)
 

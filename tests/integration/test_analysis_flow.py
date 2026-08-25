@@ -171,11 +171,14 @@ def test_full_analysis_chain_and_report(pipeline):
     assert round_report["tables"][0]["findings"][0]["title"] == "Extend evening and weekend bus service"
     assert "not a measure of participant support" in report["methodology_note"]
 
-    # markdown export
-    markdown = client.get(
-        f"/api/v1/assemblies/{pipeline['assembly']['id']}/report.md"
-    )
+    # exports are the FINAL artifact: blocked until the session is closed
+    assembly_id = pipeline["assembly"]["id"]
+    assert client.get(f"/api/v1/assemblies/{assembly_id}/report.md").status_code == 409
+
+    client.post(f"/api/v1/assemblies/{assembly_id}/close")
+    markdown = client.get(f"/api/v1/assemblies/{assembly_id}/report.md")
     assert markdown.status_code == 200
+    assert "FINAL REPORT" in markdown.text
     assert "Extend evening and weekend bus service" in markdown.text
     assert "Mentioned at 1 table(s)" in markdown.text
 

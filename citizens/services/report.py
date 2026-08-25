@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from citizens.db.models import Assembly, Finding, Participant, Recording, TranscriptSegment
+from citizens.services.recording import assembly_progress as progress
 
 METHODOLOGY_NOTE = (
     "AI was used to assist transcription and analysis. "
@@ -176,17 +177,33 @@ def build_report(session: Session, assembly: Assembly, include_drafts: bool = Fa
             if assembly.report_published_at
             else None
         ),
+        # a report is FINAL once the organizer closed the session; until then
+        # it is an interim view of an assembly still in progress
+        "closed_at": assembly.closed_at.isoformat() if assembly.closed_at else None,
+        "is_final": assembly.closed_at is not None,
+        "progress": progress(session, assembly),
         "rounds": rounds_payload,
     }
 
 
 def render_markdown(report: dict) -> str:
     assembly = report["assembly"]
+    coverage = report.get("progress") or {}
+    state_line = (
+        f"**FINAL REPORT** — closed {(report.get('closed_at') or '')[:10]}"
+        if report.get("is_final")
+        else f"**INTERIM REPORT** — {coverage.get('tables_complete', 0)} of "
+        f"{coverage.get('tables_expected', 0)} tables have completed all rounds"
+    )
     lines = [
         f"# {assembly['name']} — Assembly Report",
         "",
+        state_line,
+        "",
         assembly["description"] or "",
         "",
+        f"- Tables contributing: {coverage.get('tables_contributed', 0)} of "
+        f"{coverage.get('tables_expected', 0)}",
         f"- Participants: {assembly['participants']} (expected {assembly['expected_participants']})",
         f"- Tables: {assembly['tables']}",
         f"- Language: {assembly['language'].upper()}",

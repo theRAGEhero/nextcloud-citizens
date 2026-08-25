@@ -176,6 +176,18 @@ def render_pdf(report: dict, logo_path: Path | None = None,
     pdf.line(pdf.l_margin, pdf.get_y() + 1.5, pdf.l_margin + 42, pdf.get_y() + 1.5)
     pdf.ln(5)
 
+    # the document states plainly whether it is the final artifact
+    progress = report.get("progress") or {}
+    if report.get("is_final"):
+        closed = (report.get("closed_at") or "")[:10]
+        pdf.text_block(f"FINAL REPORT · closed {closed}", size=9, style="B", color=ACCENT,
+                       height=4.6)
+    else:
+        pdf.text_block(
+            f"INTERIM REPORT · {progress.get('tables_complete', 0)} of "
+            f"{progress.get('tables_expected', 0)} tables have completed all rounds",
+            size=9, style="B", color=AMBER, height=4.6,
+        )
     generated = datetime.now(UTC).strftime("%-d %B %Y")
     pdf.text_block(
         f"{generated} · {assembly['participants']} participants (expected "
@@ -183,6 +195,12 @@ def render_pdf(report: dict, logo_path: Path | None = None,
         f"{assembly['language'].upper()}",
         size=9.5, color=MUTED,
     )
+    if progress.get("tables_expected"):
+        pdf.text_block(
+            f"{progress.get('tables_contributed', 0)} of "
+            f"{progress['tables_expected']} tables contributed to this report",
+            size=9, color=MUTED, height=4.4,
+        )
     pdf.ln(2)
     if assembly["description"]:
         pdf.text_block(assembly["description"])

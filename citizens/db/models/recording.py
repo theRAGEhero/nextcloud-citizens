@@ -74,6 +74,9 @@ class Recording(Base):
     error_code: Mapped[str] = mapped_column(String(64), default="")
     # neutral AI description of the table discussion (always produced by analysis)
     analysis_summary: Mapped[str] = mapped_column(Text, default="")
+    # audio deliberately removed (Files tab / retention); the transcript,
+    # findings and report survive, so the row stays with its metadata
+    audio_deleted_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow, onupdate=utcnow)
 
