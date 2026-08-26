@@ -4,6 +4,28 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Whisper and Vosk speech-to-text — 2026-08-26 (v0.6.0-beta.2)
+
+- **Whisper through any OpenAI-compatible endpoint**: OpenAI's hosted API, or a
+  server you run yourself (Speaches, whisper.cpp, LocalAI, vLLM, WhisperX).
+  Configure a base URL, a model and an optional key. Servers that add speaker
+  labels — WhisperX-style, or OpenAI's `gpt-4o-transcribe-diarize` — are used
+  in diarized mode automatically; plain Whisper returns transcripts without
+  speakers, which the Settings page states plainly.
+- **Vosk**: fully offline transcription against your own vosk-server over its
+  WebSocket protocol. No key, no internet. Returns word timings but lower-case
+  text without punctuation and no speaker separation.
+- **Audio can now stay on your infrastructure.** With a self-hosted Whisper
+  server or Vosk, recordings are never sent to a third party; the store listing
+  and privacy notes say so, and the Ethical AI Rating is green in that setup.
+- Reports no longer claim "speaker diarization" when the transcript has no
+  speaker labels.
+- Fixed three places where a newly added provider would silently have been
+  handed Mistral's API key (`batch_transcription_ready`, `live_stt_snapshot`)
+  or shown Deepgram's settings panel (the Settings `v-else` branch).
+- Test and dev container images no longer share a tag, so building the dev
+  image can no longer strip the test tooling.
+
 ## [0.6.0-beta.1] — 2026-08-25
 
 First release prepared for the Nextcloud App Store. Everything below is in

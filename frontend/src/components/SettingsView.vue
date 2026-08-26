@@ -4,7 +4,7 @@
 import { mdiBrain, mdiCheck, mdiClose, mdiImageOutline, mdiMicrophoneOutline } from '@mdi/js'
 import { onMounted, ref } from 'vue'
 import { api, BASE } from '../api'
-import type { ProvidersSummary } from '../types'
+import type { ProvidersSummary, SttProvider } from '../types'
 import CzButton from './ui/CzButton.vue'
 import CzSkeleton from './ui/CzSkeleton.vue'
 import SvgIcon from './ui/SvgIcon.vue'
@@ -14,7 +14,7 @@ const summary = ref<ProvidersSummary | null>(null)
 const error = ref('')
 const busy = ref(false)
 
-const sttProvider = ref<'mistral' | 'deepgram'>('mistral')
+const sttProvider = ref<SttProvider>('mistral')
 const liveEnabled = ref(true)
 const batchEnabled = ref(true)
 const mistralKey = ref('')
@@ -23,6 +23,14 @@ const mistralBatchModel = ref('')
 const deepgramKey = ref('')
 const deepgramLiveModel = ref('')
 const deepgramBatchModel = ref('')
+const whisperKey = ref('')
+const whisperBaseUrl = ref('')
+const whisperBatchModel = ref('')
+const voskUrl = ref('')
+const voskBatchModel = ref('')
+
+// live captions currently exist only for Deepgram (see live_captions.py)
+const LIVE_CAPABLE: SttProvider[] = ['deepgram']
 const analysisBaseUrl = ref('')
 const analysisModel = ref('')
 const analysisKey = ref('')
@@ -86,6 +94,10 @@ async function reload(): Promise<void> {
 	mistralBatchModel.value = summary.value.stt.mistral_batch_model
 	deepgramLiveModel.value = summary.value.stt.deepgram_live_model
 	deepgramBatchModel.value = summary.value.stt.deepgram_batch_model
+	whisperBaseUrl.value = summary.value.stt.whisper_base_url
+	whisperBatchModel.value = summary.value.stt.whisper_batch_model
+	voskUrl.value = summary.value.stt.vosk_url
+	voskBatchModel.value = summary.value.stt.vosk_batch_model
 	analysisBaseUrl.value = summary.value.analysis.base_url
 	analysisModel.value = summary.value.analysis.model
 	analysisEnabled.value = summary.value.analysis.enabled
@@ -114,6 +126,10 @@ async function save(): Promise<void> {
 			mistral_batch_model: mistralBatchModel.value.trim(),
 			deepgram_live_model: deepgramLiveModel.value.trim(),
 			deepgram_batch_model: deepgramBatchModel.value.trim(),
+			whisper_base_url: whisperBaseUrl.value.trim(),
+			whisper_batch_model: whisperBatchModel.value.trim(),
+			vosk_url: voskUrl.value.trim(),
+			vosk_batch_model: voskBatchModel.value.trim(),
 			analysis_base_url: analysisBaseUrl.value.trim(),
 			analysis_model: analysisModel.value.trim(),
 			analysis_enabled: analysisEnabled.value,
@@ -122,10 +138,12 @@ async function save(): Promise<void> {
 		}
 		if (mistralKey.value) payload.mistral_api_key = mistralKey.value
 		if (deepgramKey.value) payload.deepgram_api_key = deepgramKey.value
+		if (whisperKey.value) payload.whisper_api_key = whisperKey.value
 		if (analysisKey.value) payload.analysis_api_key = analysisKey.value
 		summary.value = await api.updateProviders(payload)
 		mistralKey.value = ''
 		deepgramKey.value = ''
+		whisperKey.value = ''
 		analysisKey.value = ''
 		toast('Settings saved')
 	} catch (err) {
@@ -135,12 +153,22 @@ async function save(): Promise<void> {
 	}
 }
 
-async function test(target: 'mistral' | 'deepgram' | 'analysis'): Promise<void> {
+async function test(target: SttProvider | 'analysis'): Promise<void> {
 	busy.value = true
 	try {
-		const typed =
-			target === 'mistral' ? mistralKey.value : target === 'deepgram' ? deepgramKey.value : analysisKey.value
-		const baseUrl = target === 'analysis' ? analysisBaseUrl.value.trim() : undefined
+		const typedKeys: Record<string, string> = {
+			mistral: mistralKey.value,
+			deepgram: deepgramKey.value,
+			whisper: whisperKey.value,
+			analysis: analysisKey.value,
+		}
+		const typed = typedKeys[target] ?? ''
+		const baseUrls: Record<string, string> = {
+			analysis: analysisBaseUrl.value.trim(),
+			whisper: whisperBaseUrl.value.trim(),
+			vosk: voskUrl.value.trim(),
+		}
+		const baseUrl = baseUrls[target]
 		testResults.value = {
 			...testResults.value,
 			[target]: await api.testProvider(target, typed.trim() || undefined, baseUrl),
@@ -193,7 +221,23 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 						<input v-model="sttProvider" type="radio" value="deepgram" />
 						Deepgram
 					</label>
+					<label class="cz-radiocard" :class="{ 'cz-radiocard--checked': sttProvider === 'whisper' }">
+						<input v-model="sttProvider" type="radio" value="whisper" />
+						Whisper (OpenAI-compatible)
+					</label>
+					<label class="cz-radiocard" :class="{ 'cz-radiocard--checked': sttProvider === 'vosk' }">
+						<input v-model="sttProvider" type="radio" value="vosk" />
+						Vosk (offline)
+					</label>
 				</div>
+
+				<p
+					v-if="!LIVE_CAPABLE.includes(sttProvider)"
+					class="cz-muted"
+					style="font-size: 13px; margin: -6px 0 14px">
+					Live captions during recording are available with Deepgram only; other engines
+					still produce the full transcript after each round.
+				</p>
 
 				<div v-if="sttProvider === 'mistral'" class="cz-fieldgrid">
 					<div class="cz-field">
@@ -222,7 +266,7 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 						<span class="cz-muted" style="font-size: 12px">Live captions with Mistral are not wired up yet.</span>
 					</div>
 				</div>
-				<div v-else class="cz-fieldgrid">
+				<div v-else-if="sttProvider === 'deepgram'" class="cz-fieldgrid">
 					<div class="cz-field">
 						<label>Deepgram API key</label>
 						<div class="cz-row" style="flex-wrap: nowrap">
@@ -246,6 +290,87 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 					<div class="cz-field">
 						<label>Live transcription model</label>
 						<input v-model="deepgramLiveModel" type="text" placeholder="nova-3" />
+					</div>
+				</div>
+
+				<div v-else-if="sttProvider === 'whisper'" class="cz-fieldgrid">
+					<div class="cz-field" style="grid-column: span 2">
+						<label>Endpoint base URL</label>
+						<input v-model="whisperBaseUrl" type="text" placeholder="https://api.openai.com/v1" />
+						<span class="cz-muted" style="font-size: 12.5px">
+							Any OpenAI-compatible transcription endpoint: OpenAI itself, or a server you
+							run (Speaches, whisper.cpp, LocalAI, vLLM, WhisperX). With your own server
+							the audio never leaves your infrastructure.
+						</span>
+					</div>
+					<div class="cz-field">
+						<label>Model</label>
+						<input v-model="whisperBatchModel" type="text" placeholder="whisper-1" />
+						<span class="cz-muted" style="font-size: 12.5px">
+							A model name containing “diarize” (e.g. gpt-4o-transcribe-diarize) is
+							requested in diarized mode and returns speaker labels.
+						</span>
+					</div>
+					<div class="cz-field">
+						<label>API key (optional)</label>
+						<div class="cz-row" style="flex-wrap: nowrap">
+							<input
+								v-model="whisperKey"
+								type="password"
+								autocomplete="off"
+								style="flex: 1"
+								:placeholder="keyPlaceholder(summary.stt.whisper_configured, summary.stt.whisper_key_hint)" />
+							<CzButton small :disabled="busy" @click="test('whisper')">Test</CzButton>
+						</div>
+						<span v-if="testResults.whisper" class="cz-pill" :class="testResults.whisper.ok ? 'cz-pill--green' : 'cz-pill--orange'" style="text-transform: none; align-self: flex-start">
+							<SvgIcon :path="testResults.whisper.ok ? mdiCheck : mdiClose" :size="14" />
+							{{ testResults.whisper.message }}
+						</span>
+						<span class="cz-muted" style="font-size: 12.5px">
+							Required by OpenAI; most self-hosted servers need none.
+						</span>
+					</div>
+					<div class="cz-field" style="grid-column: span 2">
+						<span class="cz-muted" style="font-size: 12.5px">
+							<strong>No speaker separation.</strong> Standard Whisper returns text with
+							timestamps but does not say who spoke, so transcripts and report quotes
+							appear without speaker labels. Servers that add diarization (WhisperX-based,
+							or OpenAI's diarizing model) are used automatically when they provide it.
+						</span>
+					</div>
+				</div>
+
+				<div v-else class="cz-fieldgrid">
+					<div class="cz-field" style="grid-column: span 2">
+						<label>Vosk server URL</label>
+						<div class="cz-row" style="flex-wrap: nowrap">
+							<input v-model="voskUrl" type="text" style="flex: 1" placeholder="ws://localhost:2700" />
+							<CzButton small :disabled="busy" @click="test('vosk')">Test</CzButton>
+						</div>
+						<span v-if="testResults.vosk" class="cz-pill" :class="testResults.vosk.ok ? 'cz-pill--green' : 'cz-pill--orange'" style="text-transform: none; align-self: flex-start">
+							<SvgIcon :path="testResults.vosk.ok ? mdiCheck : mdiClose" :size="14" />
+							{{ testResults.vosk.message }}
+						</span>
+						<span class="cz-muted" style="font-size: 12.5px">
+							A vosk-server instance you run (for example the alphacep/kaldi-en image on
+							port 2700). No API key, no internet: audio never leaves your network.
+						</span>
+					</div>
+					<div class="cz-field">
+						<label>Model label (optional)</label>
+						<input v-model="voskBatchModel" type="text" placeholder="vosk-model-en-us-0.22" />
+						<span class="cz-muted" style="font-size: 12.5px">
+							Recorded with the transcript for reference; the actual model is chosen on
+							the Vosk server.
+						</span>
+					</div>
+					<div class="cz-field" style="grid-column: span 2">
+						<span class="cz-muted" style="font-size: 12.5px">
+							<strong>Offline, but plainer output.</strong> Vosk returns lower-case text
+							without punctuation and does not separate speakers. It is the right choice
+							when nothing may leave the premises; Deepgram or a diarizing Whisper server
+							give a far more readable assembly record.
+						</span>
 					</div>
 				</div>
 

@@ -38,13 +38,14 @@ logs:
 # image never carries it.
 .PHONY: test
 test:
-	docker build -q --build-arg WITH_TEST_TOOLS=1 -t citizens-dev . >/dev/null
-	docker run --rm --user root -v "$(CURDIR)":/app -w /app --entrypoint sh citizens-dev \
+	docker build -q --build-arg WITH_TEST_TOOLS=1 -t citizens-test . >/dev/null
+	docker run --rm --user root -v "$(CURDIR)":/app -w /app --entrypoint sh citizens-test \
 		-c "pip install -q pytest ruff && python -m pytest -q"
 
 .PHONY: lint
 lint:
-	docker run --rm --user root -v "$(CURDIR)":/app -w /app --entrypoint sh citizens-dev \
+	docker build -q --build-arg WITH_TEST_TOOLS=1 -t citizens-test . >/dev/null
+	docker run --rm --user root -v "$(CURDIR)":/app -w /app --entrypoint sh citizens-test \
 		-c "pip install -q ruff && python -m ruff check citizens tests"
 
 .PHONY: dev-reset

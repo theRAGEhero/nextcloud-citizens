@@ -15,16 +15,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build test image
-        run: docker build --build-arg WITH_TEST_TOOLS=1 -t citizens-dev .
+        run: docker build --build-arg WITH_TEST_TOOLS=1 -t citizens-test .
 
       - name: Lint
         run: |
-          docker run --rm --user root -v "$PWD":/app -w /app --entrypoint sh citizens-dev \
+          docker run --rm --user root -v "$PWD":/app -w /app --entrypoint sh citizens-test \
             -c "pip install -q ruff && ruff check citizens tests"
 
       - name: Tests
         run: |
-          docker run --rm --user root -v "$PWD":/app -w /app --entrypoint sh citizens-dev \
+          docker run --rm --user root -v "$PWD":/app -w /app --entrypoint sh citizens-test \
             -c "pip install -q pytest && python -m pytest -q"
 
   bundles:

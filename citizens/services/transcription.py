@@ -12,18 +12,28 @@ from citizens.db.models import Assembly, Recording, Transcript, TranscriptSegmen
 from citizens.logging_setup import get_logger
 from citizens.providers.transcription import deepgram as deepgram_provider
 from citizens.providers.transcription import mistral as mistral_provider
+from citizens.providers.transcription import vosk as vosk_provider
+from citizens.providers.transcription import whisper as whisper_provider
 from citizens.providers.transcription.base import NormalizedTranscript, TranscriptionError
 from citizens.services import provider_config
 
 log = get_logger(__name__)
+
+# hosted providers authenticate with a key; self-hostable ones are reachable
+# at a URL instead (a Whisper server may or may not require a key)
+KEYED_PROVIDERS = ("deepgram", "mistral")
+URL_PROVIDERS = {"whisper": "whisper_base_url", "vosk": "vosk_url"}
 
 
 def batch_transcription_ready(store: provider_config.ConfigStore) -> bool:
     if provider_config.get_setting(store, "stt_batch_enabled") != "1":
         return False
     provider = provider_config.get_setting(store, "stt_provider")
-    key_name = "deepgram_api_key" if provider == "deepgram" else "mistral_api_key"
-    return bool(store.get_value(key_name))
+    if provider in URL_PROVIDERS:
+        return bool(provider_config.get_setting(store, URL_PROVIDERS[provider]))
+    if provider in KEYED_PROVIDERS:
+        return bool(store.get_value(f"{provider}_api_key"))
+    return False
 
 
 def transcribe_recording(
@@ -62,6 +72,26 @@ def transcribe_recording(
         normalized = mistral_provider.transcribe_file(
             key, audio_path, recording.mime_type, language,
             model=provider_config.get_setting(store, "mistral_batch_model"),
+        )
+    elif provider == "whisper":
+        base_url = provider_config.get_setting(store, "whisper_base_url")
+        if not base_url:
+            raise TranscriptionError("No Whisper endpoint configured", permanent=True)
+        normalized = whisper_provider.transcribe_file(
+            # self-hosted servers usually need no key; hosted OpenAI does
+            store.get_value("whisper_api_key") or "",
+            audio_path, recording.mime_type, language,
+            model=provider_config.get_setting(store, "whisper_batch_model"),
+            base_url=base_url,
+        )
+    elif provider == "vosk":
+        url = provider_config.get_setting(store, "vosk_url")
+        if not url:
+            raise TranscriptionError("No Vosk server URL configured", permanent=True)
+        normalized = vosk_provider.transcribe_file(
+            "", audio_path, recording.mime_type, language,
+            model=provider_config.get_setting(store, "vosk_batch_model"),
+            base_url=url,
         )
     else:
         raise TranscriptionError(f"Unknown STT provider {provider}", permanent=True)

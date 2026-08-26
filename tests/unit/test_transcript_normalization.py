@@ -119,3 +119,144 @@ def test_speaker_labeler_orders_by_first_appearance():
     assert labeler.label(2) == "SPEAKER_02"
     assert labeler.label(7) == "SPEAKER_01"
     assert labeler.label(None) == ""
+
+
+# ---------------------------------------------------------------- Whisper
+
+WHISPER_VERBOSE = {
+    "task": "transcribe",
+    "language": "english",
+    "duration": 12.5,
+    "text": "The last bus leaves too early. I cycle instead.",
+    "segments": [
+        {"id": 0, "seek": 0, "start": 0.0, "end": 6.0,
+         "text": " The last bus leaves too early.", "no_speech_prob": 0.01},
+        {"id": 1, "seek": 0, "start": 6.2, "end": 12.5,
+         "text": " I cycle instead.", "no_speech_prob": 0.02},
+    ],
+    # verbose_json puts every word in ONE flat list, not inside the segments
+    "words": [
+        {"word": "The", "start": 0.0, "end": 0.3},
+        {"word": "last", "start": 0.3, "end": 0.7},
+        {"word": "bus", "start": 0.7, "end": 1.1},
+        {"word": "I", "start": 6.2, "end": 6.4},
+        {"word": "cycle", "start": 6.4, "end": 6.9},
+    ],
+}
+
+WHISPER_DIARIZED = {
+    "task": "transcribe",
+    "duration": 9.0,
+    "text": "Good morning. Nice to meet you.",
+    "segments": [
+        {"type": "transcript.text.segment", "id": "seg_0", "start": 0.0, "end": 4.0,
+         "text": "Good morning.", "speaker": "A"},
+        {"type": "transcript.text.segment", "id": "seg_1", "start": 4.2, "end": 9.0,
+         "text": "Nice to meet you.", "speaker": "B"},
+    ],
+}
+
+
+def test_whisper_verbose_json_segments_and_flat_words():
+    from citizens.providers.transcription import whisper
+
+    result = whisper.normalize(WHISPER_VERBOSE, model="whisper-1", requested_language="en")
+    assert result.provider == "whisper"
+    assert result.language == "english"
+    assert len(result.segments) == 2
+    # plain Whisper has no speakers at all
+    assert [s.speaker for s in result.segments] == ["", ""]
+    # the flat word list is split across segments by time
+    assert [w.text for w in result.segments[0].words] == ["The", "last", "bus"]
+    assert [w.text for w in result.segments[1].words] == ["I", "cycle"]
+
+
+def test_whisper_diarized_json_gets_speaker_labels():
+    from citizens.providers.transcription import whisper
+
+    result = whisper.normalize(WHISPER_DIARIZED, model="gpt-4o-transcribe-diarize",
+                               requested_language="en")
+    assert [s.speaker for s in result.segments] == ["SPEAKER_01", "SPEAKER_02"]
+    assert result.segments[0].words == []  # the diarizing model returns no word timings
+
+
+def test_whisper_server_injected_speaker_is_used():
+    from citizens.providers.transcription import whisper
+
+    raw = {
+        "text": "hello there",
+        "segments": [
+            {"start": 0.0, "end": 2.0, "text": "hello", "speaker": "SPEAKER_00"},
+            {"start": 2.0, "end": 4.0, "text": "there", "speaker": "SPEAKER_01"},
+        ],
+    }
+    result = whisper.normalize(raw, model="whisper-1", requested_language="it")
+    assert [s.speaker for s in result.segments] == ["SPEAKER_01", "SPEAKER_02"]
+    assert result.language == "it"  # no language in the response → requested one
+
+
+def test_whisper_plain_json_without_segments():
+    from citizens.providers.transcription import whisper
+
+    result = whisper.normalize(
+        {"text": "one block of text", "duration": 5.0}, model="whisper-1", requested_language="en"
+    )
+    assert len(result.segments) == 1
+    assert result.segments[0].speaker == ""
+    assert result.segments[0].end == 5.0
+
+
+def test_whisper_silence_yields_no_segments():
+    from citizens.providers.transcription import whisper
+
+    assert whisper.normalize({"text": "  ", "segments": []}, model="whisper-1",
+                             requested_language="en").segments == []
+
+
+# ------------------------------------------------------------------- Vosk
+
+VOSK_RAW = {
+    "results": [
+        {"text": "the last bus leaves too early",
+         "result": [
+             {"conf": 1.0, "start": 0.9, "end": 1.2, "word": "the"},
+             {"conf": 0.99, "start": 1.2, "end": 1.6, "word": "last"},
+             {"conf": 0.98, "start": 1.6, "end": 2.0, "word": "bus"},
+         ]},
+        {"text": "i cycle instead",
+         "result": [
+             {"conf": 1.0, "start": 3.0, "end": 3.2, "word": "i"},
+             {"conf": 0.97, "start": 3.2, "end": 3.8, "word": "cycle"},
+         ]},
+    ]
+}
+
+
+def test_vosk_normalization_words_and_no_speakers():
+    from citizens.providers.transcription import vosk
+
+    result = vosk.normalize(VOSK_RAW, model="", requested_language="en")
+    assert result.provider == "vosk"
+    assert result.model == "vosk-server"
+    assert len(result.segments) == 2
+    # Vosk does not diarize — the base class documents "" for that case
+    assert [s.speaker for s in result.segments] == ["", ""]
+    assert result.segments[0].start == 0.9 and result.segments[0].end == 2.0
+    assert [w.text for w in result.segments[1].words] == ["i", "cycle"]
+
+
+def test_vosk_empty_and_textless_results():
+    from citizens.providers.transcription import vosk
+
+    assert vosk.normalize({"results": []}, model="", requested_language="en").segments == []
+    # a final with words but no text field still produces text
+    raw = {"results": [{"result": [{"start": 0.0, "end": 0.5, "word": "ciao"}]}]}
+    result = vosk.normalize(raw, model="", requested_language="it")
+    assert result.segments[0].text == "ciao"
+
+
+def test_vosk_eof_message_is_byte_exact():
+    from citizens.providers.transcription import vosk
+
+    # the server compares this with a literal string; json.dumps would differ
+    assert vosk.EOF_MESSAGE == '{"eof" : 1}'

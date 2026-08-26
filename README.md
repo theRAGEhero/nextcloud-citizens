@@ -45,7 +45,8 @@ that a human organizer reviews before anything is published.
   consensus and divergence, and participation coverage — publishable back to the
   table phones so participants see their own outcome.
 * **Data you control.** Per-assembly Files tab to download, export or delete
-  audio and transcripts at any time.
+  audio and transcripts at any time — and with a self-hosted Whisper server or
+  Vosk, recordings never leave your infrastructure at all.
 
 ## Install
 
@@ -60,7 +61,7 @@ anywhere. See the [administration guide](docs/administration.md).
 
 | Step | Data | Destination | Condition |
 |---|---|---|---|
-| Transcription | assembled audio of a recording | Deepgram or Mistral | only with an admin-configured key |
+| Transcription | assembled audio of a recording | Deepgram, Mistral, or any OpenAI-compatible Whisper endpoint — **or nothing at all**, with a self-hosted Whisper server or Vosk | only with an admin-configured engine |
 | Analysis | transcript text (never audio) | any OpenAI-compatible endpoint, including your own | only with an admin-configured endpoint |
 
 Everything else — audio, transcripts, findings, reports — stays in the app's own

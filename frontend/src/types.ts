@@ -123,10 +123,12 @@ export interface MonitorTable {
 	} | null
 }
 
+export type SttProvider = 'mistral' | 'deepgram' | 'whisper' | 'vosk'
+
 export interface ProvidersSummary {
 	organization_name: string
 	stt: {
-		provider: 'mistral' | 'deepgram'
+		provider: SttProvider
 		live_enabled: boolean
 		batch_enabled: boolean
 		mistral_configured: boolean
@@ -137,6 +139,12 @@ export interface ProvidersSummary {
 		deepgram_key_hint: string
 		deepgram_live_model: string
 		deepgram_batch_model: string
+		whisper_configured: boolean
+		whisper_key_hint: string
+		whisper_base_url: string
+		whisper_batch_model: string
+		vosk_url: string
+		vosk_batch_model: string
 	}
 	analysis: {
 		base_url: string

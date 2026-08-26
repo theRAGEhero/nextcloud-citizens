@@ -25,9 +25,23 @@ audio, but performs no transcription and no analysis.
 
 Open **Citizens → Settings** (visible to Nextcloud administrators only).
 
-**Transcription.** Choose Deepgram or Mistral and paste that provider's API key.
-You can set the model used for live captions and for the final transcript
-separately. Use the *Test* button before saving — it checks the key you typed.
+**Transcription.** Four engines are supported:
+
+| Engine | Runs | Speaker labels | Notes |
+|---|---|---|---|
+| Deepgram | hosted | yes | best transcripts; the only engine with live captions |
+| Mistral (Voxtral) | hosted | yes | hosted alternative |
+| Whisper (OpenAI-compatible) | hosted **or your own server** | only on diarizing servers | any endpoint speaking the OpenAI audio API: OpenAI, Speaches, whisper.cpp, LocalAI, vLLM, WhisperX |
+| Vosk | **your own server**, offline | no | no punctuation or capitalisation; nothing leaves your network |
+
+Paste the API key for hosted engines, or the endpoint URL for self-hosted ones,
+and use the *Test* button before saving — it checks what you typed.
+
+Choosing **Whisper against your own server** or **Vosk** means recordings are
+never sent to a third party. A Whisper server that adds diarization (WhisperX-
+based, or OpenAI's `gpt-4o-transcribe-diarize` model) keeps speaker labels;
+plain Whisper and Vosk produce transcripts without them, and reports then omit
+the "who said it" attribution while keeping every quote and finding.
 
 **AI analysis.** Any OpenAI-compatible endpoint works: Mistral, OpenAI, or a
 self-hosted server such as Ollama or vLLM. Set the base URL, model and key.
@@ -45,7 +59,7 @@ are never sent to browsers, never written to logs, and never reach the phones.
 
 | Step | What is sent | Where | When |
 |---|---|---|---|
-| Transcription | the assembled audio of one recording | Deepgram or Mistral | only after an admin configures a key |
+| Transcription | the assembled audio of one recording | Deepgram, Mistral, or the Whisper endpoint you configure (which can be your own server) | only after an admin configures an engine |
 | Live captions | ~10-second audio chunks during recording | Deepgram | only if live captions are enabled |
 | Analysis | transcript text (never audio) | the configured endpoint — may be your own server | only after an admin configures it |
 

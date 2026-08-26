@@ -23,7 +23,8 @@ findings that a human organizer reviews before anything is published.
 3. Run the assembly in **live mode** (you start and end each round for every table
    at once) or **independent mode** (each table records the shared questions on its
    own schedule, even days apart).
-4. Recordings are transcribed with speaker diarization and analyzed per table, then
+4. Recordings are transcribed (with speaker diarization on engines that support it)
+   and analyzed per table, then
    aggregated across tables into points of consensus, points of divergence,
    proposals, concerns and open questions — every finding linked to the exact
    passage that supports it.
@@ -37,8 +38,11 @@ This app records people's voices, which is sensitive personal data.
 
 * **Nothing is sent anywhere until an administrator configures a key.** A fresh
   install performs no transcription and no analysis.
-* **Speech-to-text**: when an administrator adds a Deepgram or Mistral API key, the
-  assembled audio of a recording is sent to that provider once, for transcription.
+* **Speech-to-text**: four engines are supported. Deepgram and Mistral are hosted
+  services — with those, the assembled audio of a recording is sent to the provider
+  once, for transcription. **Whisper** works against any OpenAI-compatible endpoint,
+  including one you run yourself, and **Vosk** runs entirely offline on your own
+  server; with either of those, audio never leaves your infrastructure.
 * **Analysis**: when an administrator configures an analysis endpoint, only the
   *transcript text* (never audio) is sent to it. Any OpenAI-compatible endpoint
   works, so this step can run entirely on your own infrastructure — for example a
@@ -52,13 +56,15 @@ Full note: https://github.com/theRAGEhero/nextcloud-citizens/blob/main/docs/priv
 
 ## Ethical AI Rating
 
-**Rating: 🟠 Orange** — the default transcription providers are proprietary hosted
-services (Deepgram, Mistral), and no fully self-hosted speech-to-text is wired up
-yet. Positives: the software is AGPL and self-hosted, all data stays on your server
-by default, transcription is off until you supply a key, and the analysis step works
-against any OpenAI-compatible endpoint including local models. Negatives: the
-speech-to-text step currently requires a third-party service and its models are not
-freely available. See https://nextcloud.com/blog/nextcloud-ethical-ai-rating/
+**Rating: 🟢 Green when self-hosted, 🟠 orange with hosted providers.** Both
+transcription and analysis can run entirely on your own infrastructure: Whisper
+through any OpenAI-compatible server (Speaches, whisper.cpp, LocalAI, vLLM,
+WhisperX) or Vosk fully offline, with analysis against a local Ollama or vLLM
+endpoint. Nothing leaves your servers in that configuration, the software is AGPL,
+and transcription stays off until you configure an engine. Choosing the hosted
+options (Deepgram, Mistral, OpenAI) sends audio or transcripts to a third party
+whose models are not freely available — that is the orange case.
+See https://nextcloud.com/blog/nextcloud-ethical-ai-rating/
 
 ## Status
 
@@ -67,7 +73,7 @@ pipeline is tested end to end, but automatic retention (scheduled deletion of au
 and an in-app participant consent notice are still to come. Organizers running real
 assemblies should have a privacy notice and a retention practice of their own.
 	]]></description>
-	<version>0.6.0-beta.1</version>
+	<version>0.6.0-beta.2</version>
 	<licence>AGPL-3.0-or-later</licence>
 	<author mail="philip@decentsoftwa.re">Philip</author>
 	<documentation>
@@ -95,7 +101,7 @@ assemblies should have a privacy notice and a retention practice of their own.
 		<docker-install>
 			<registry>ghcr.io</registry>
 			<image>theragehero/citizens</image>
-			<image-tag>0.6.0-beta.1</image-tag>
+			<image-tag>0.6.0-beta.2</image-tag>
 		</docker-install>
 		<!-- Route regexes are matched against the request path WITHOUT a
 		     leading slash on AppAPI <= 33 and WITH one on 34+; the escaped

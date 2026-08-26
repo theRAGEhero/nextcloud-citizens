@@ -54,7 +54,7 @@ def get_providers(store: Store, user: CurrentUser):
 
 
 class ProvidersUpdate(BaseModel):
-    stt_provider: Literal["mistral", "deepgram"] | None = None
+    stt_provider: Literal["mistral", "deepgram", "whisper", "vosk"] | None = None
     stt_live_enabled: bool | None = None
     stt_batch_enabled: bool | None = None
     mistral_api_key: str | None = Field(default=None, max_length=500)
@@ -63,6 +63,11 @@ class ProvidersUpdate(BaseModel):
     deepgram_api_key: str | None = Field(default=None, max_length=500)
     deepgram_live_model: str | None = Field(default=None, max_length=100)
     deepgram_batch_model: str | None = Field(default=None, max_length=100)
+    whisper_api_key: str | None = Field(default=None, max_length=500)
+    whisper_base_url: str | None = Field(default=None, max_length=500)
+    whisper_batch_model: str | None = Field(default=None, max_length=100)
+    vosk_url: str | None = Field(default=None, max_length=500)
+    vosk_batch_model: str | None = Field(default=None, max_length=100)
     analysis_base_url: str | None = Field(default=None, max_length=500)
     analysis_model: str | None = Field(default=None, max_length=200)
     analysis_api_key: str | None = Field(default=None, max_length=500)
@@ -90,7 +95,7 @@ def update_providers(data: ProvidersUpdate, store: Store, user: CurrentUser, ses
 
 
 class TestIn(BaseModel):
-    target: Literal["mistral", "deepgram", "analysis"]
+    target: Literal["mistral", "deepgram", "whisper", "vosk", "analysis"]
     # lets the admin test what's typed in the form before saving it
     api_key: str | None = Field(default=None, max_length=500)
     base_url: str | None = Field(default=None, max_length=500)

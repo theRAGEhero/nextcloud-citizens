@@ -10,6 +10,7 @@ import type {
 	InviteGenerated,
 	Participant,
 	ProvidersSummary,
+	SttProvider,
 	ReportData,
 	Round,
 	RoundFindings,
@@ -111,7 +112,7 @@ export const api = {
 	getProviders: () => request<ProvidersSummary>('GET', '/api/v1/admin/providers'),
 	updateProviders: (payload: Record<string, unknown>) =>
 		request<ProvidersSummary>('PUT', '/api/v1/admin/providers', payload),
-	testProvider: (target: 'mistral' | 'deepgram' | 'analysis', apiKey?: string, baseUrl?: string) =>
+	testProvider: (target: SttProvider | 'analysis', apiKey?: string, baseUrl?: string) =>
 		request<{ ok: boolean; message: string }>('POST', '/api/v1/admin/providers/test', {
 			target,
 			api_key: apiKey,

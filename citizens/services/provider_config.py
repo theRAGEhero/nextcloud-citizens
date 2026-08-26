@@ -32,12 +32,10 @@ def live_stt_snapshot() -> dict:
         snapshot = {
             "enabled": get_setting(store, "stt_live_enabled") == "1",
             "provider": provider,
-            "api_key": store.get_value(f"{provider}_api_key")
-            if provider == "deepgram"
-            else store.get_value("mistral_api_key"),
-            "model": get_setting(store, "deepgram_live_model")
-            if provider == "deepgram"
-            else get_setting(store, "mistral_live_model"),
+            # per-provider keys by name: a hardcoded pair silently handed any
+            # newly added provider the wrong credentials
+            "api_key": store.get_value(f"{provider}_api_key"),
+            "model": get_setting(store, f"{provider}_live_model"),
         }
     except Exception:
         log.warning("live_stt_snapshot_failed", exc_info=True)
@@ -69,7 +67,7 @@ def analysis_enabled_cached() -> bool:
     _analysis_enabled_cache = (now, enabled)
     return enabled
 
-KEY_FIELDS = ("mistral_api_key", "deepgram_api_key", "analysis_api_key")
+KEY_FIELDS = ("mistral_api_key", "deepgram_api_key", "whisper_api_key", "analysis_api_key")
 
 DEFAULTS = {
     "stt_provider": "mistral",
@@ -81,6 +79,15 @@ DEFAULTS = {
     "deepgram_batch_model": "nova-3",
     "mistral_live_model": "",  # Voxtral Realtime — not wired yet
     "mistral_batch_model": "voxtral-mini-latest",
+    # Whisper through any OpenAI-compatible endpoint: hosted OpenAI by default,
+    # or a self-hosted server (Speaches, whisper.cpp, LocalAI, vLLM, WhisperX)
+    "whisper_base_url": "https://api.openai.com/v1",
+    "whisper_batch_model": "whisper-1",
+    "whisper_live_model": "",  # streaming not wired for Whisper
+    # Vosk: fully offline, WebSocket protocol, no key
+    "vosk_url": "ws://localhost:2700",
+    "vosk_batch_model": "",  # the model is chosen server-side
+    "vosk_live_model": "",
     "analysis_base_url": "https://api.mistral.ai/v1",
     "analysis_model": "mistral-large-latest",
     "analysis_enabled": "1",
@@ -176,6 +183,12 @@ def providers_summary(store: ConfigStore) -> dict:
             "deepgram_key_hint": key_hint(store, "deepgram_api_key"),
             "deepgram_live_model": get_setting(store, "deepgram_live_model"),
             "deepgram_batch_model": get_setting(store, "deepgram_batch_model"),
+            "whisper_configured": bool(store.get_value("whisper_api_key")),
+            "whisper_key_hint": key_hint(store, "whisper_api_key"),
+            "whisper_base_url": get_setting(store, "whisper_base_url"),
+            "whisper_batch_model": get_setting(store, "whisper_batch_model"),
+            "vosk_url": get_setting(store, "vosk_url"),
+            "vosk_batch_model": get_setting(store, "vosk_batch_model"),
         },
         "analysis": {
             "base_url": get_setting(store, "analysis_base_url"),
@@ -216,6 +229,34 @@ def test_connection(
                 headers={"Authorization": f"Token {key}"},
                 timeout=15,
             )
+        elif target == "whisper":
+            from citizens.providers.transcription import whisper as whisper_provider
+
+            base = (override_base_url or get_setting(store, "whisper_base_url")).rstrip("/")
+            if not base:
+                return {"ok": False, "message": "No Whisper endpoint URL configured"}
+            key = override_key or store.get_value("whisper_api_key") or ""
+            response = whisper_provider.probe_models(base, key)
+            # servers that omit /models (whisper.cpp) still transcribe fine
+            if response.status_code == 404:
+                return {
+                    "ok": True,
+                    "message": "Endpoint reachable (no /models listing — that is normal for some servers)",
+                }
+        elif target == "vosk":
+            import asyncio
+
+            from citizens.providers.transcription import vosk as vosk_provider
+
+            url = override_base_url or get_setting(store, "vosk_url")
+            if not url:
+                return {"ok": False, "message": "No Vosk server URL configured"}
+            try:
+                asyncio.run(vosk_provider.probe(url))
+            except Exception as exc:
+                log.warning("provider_test_failed", target=target, error=type(exc).__name__)
+                return {"ok": False, "message": f"Could not reach {url}: {type(exc).__name__}"}
+            return {"ok": True, "message": "Connected"}
         elif target == "analysis":
             key = override_key or store.get_value("analysis_api_key")
             if not key:

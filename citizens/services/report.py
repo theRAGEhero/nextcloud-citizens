@@ -5,7 +5,14 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from citizens.db.models import Assembly, Finding, Participant, Recording, TranscriptSegment
+from citizens.db.models import (
+    Assembly,
+    Finding,
+    Participant,
+    Recording,
+    Transcript,
+    TranscriptSegment,
+)
 from citizens.services.recording import assembly_progress as progress
 
 METHODOLOGY_NOTE = (
@@ -61,6 +68,20 @@ APPROVED = ("APPROVED", "EDITED_AND_APPROVED")
 
 def _timestamp(seconds: float) -> str:
     return f"{int(seconds // 60):02d}:{int(seconds % 60):02d}"
+
+
+def _has_speaker_labels(session: Session, assembly: Assembly) -> bool:
+    """True when at least one transcript segment names a speaker."""
+    return (
+        session.execute(
+            select(TranscriptSegment.id)
+            .join(Transcript, Transcript.id == TranscriptSegment.transcript_id)
+            .join(Recording, Recording.id == Transcript.recording_id)
+            .where(Recording.assembly_id == assembly.id, TranscriptSegment.speaker_label != "")
+            .limit(1)
+        ).first()
+        is not None
+    )
 
 
 def build_report(session: Session, assembly: Assembly, include_drafts: bool = False) -> dict:
@@ -169,10 +190,13 @@ def build_report(session: Session, assembly: Assembly, include_drafts: bool = Fa
             "expected_participants": assembly.expected_participants,
             "tables": assembly.default_table_count,
         },
+        # only claim diarization when the transcripts actually carry speakers:
+        # Whisper and Vosk return text without speaker separation
         "method": (
             "In-person citizens' assembly: participants discussed in small tables; "
             "one phone per table recorded the conversation, which was transcribed "
-            "with speaker diarization and analyzed per table, then aggregated across tables."
+            + ("with speaker diarization " if _has_speaker_labels(session, assembly) else "")
+            + "and analyzed per table, then aggregated across tables."
         ),
         "methodology_note": METHODOLOGY_NOTE,
         "include_drafts": include_drafts,
