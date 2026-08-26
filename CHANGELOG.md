@@ -4,6 +4,25 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Live captions for every engine — 2026-08-26 (v0.6.0-beta.3)
+
+- **Live captions are no longer Deepgram-only.** Every configured engine now
+  produces them through the protocol it actually speaks: Vosk and
+  Deepgram-protocol servers stream natively, **Mistral Voxtral Realtime** is
+  wired up at last (it was marked "not yet active" since the beginning), and
+  Whisper endpoints caption from rolling 20-second windows, which works with
+  any OpenAI-compatible server rather than only those implementing a realtime
+  socket.
+- **The Deepgram caption endpoint is configurable**, so a self-hosted server
+  speaking the same streaming protocol (WhisperLiveKit) can provide captions
+  without audio leaving your network.
+- **Captions now update as people speak.** Engines only finalise text at a
+  pause, so a table talking continuously used to see nothing; in-progress
+  speech is now shown provisionally and replaced by the final wording.
+- New: one ffmpeg per recording decodes the phone's chunk stream to PCM for the
+  engines that need it (Deepgram takes the stream as-is). Caption failures
+  still never touch the recording.
+
 ### Whisper and Vosk speech-to-text — 2026-08-26 (v0.6.0-beta.2)
 
 - **Whisper through any OpenAI-compatible endpoint**: OpenAI's hosted API, or a

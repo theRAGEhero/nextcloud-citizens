@@ -36,10 +36,13 @@ def live_stt_snapshot() -> dict:
             # newly added provider the wrong credentials
             "api_key": store.get_value(f"{provider}_api_key"),
             "model": get_setting(store, f"{provider}_live_model"),
+            # the socket/endpoint each caption engine connects to
+            "endpoint": get_setting(store, LIVE_ENDPOINT_KEYS.get(provider, "")),
         }
     except Exception:
         log.warning("live_stt_snapshot_failed", exc_info=True)
-        snapshot = {"enabled": False, "provider": "", "api_key": None, "model": ""}
+        snapshot = {"enabled": False, "provider": "", "api_key": None, "model": "",
+                    "endpoint": ""}
     _live_snapshot = (now, snapshot)
     return snapshot
 
@@ -69,6 +72,15 @@ def analysis_enabled_cached() -> bool:
 
 KEY_FIELDS = ("mistral_api_key", "deepgram_api_key", "whisper_api_key", "analysis_api_key")
 
+# where each engine's live captions connect; Deepgram's is configurable so
+# servers speaking the same protocol (WhisperLiveKit) can be used instead
+LIVE_ENDPOINT_KEYS = {
+    "deepgram": "deepgram_live_url",
+    "mistral": "mistral_live_url",
+    "whisper": "whisper_base_url",
+    "vosk": "vosk_url",
+}
+
 DEFAULTS = {
     "stt_provider": "mistral",
     "stt_live_enabled": "1",
@@ -77,13 +89,18 @@ DEFAULTS = {
     # (batch) transcription models are configured separately per provider
     "deepgram_live_model": "nova-3",
     "deepgram_batch_model": "nova-3",
-    "mistral_live_model": "",  # Voxtral Realtime — not wired yet
+    # any server speaking Deepgram's streaming protocol works here
+    "deepgram_live_url": "wss://api.deepgram.com/v1/listen",
+    "mistral_live_model": "voxtral-mini-transcribe-realtime-2602",
+    "mistral_live_url": "wss://api.mistral.ai/v1/audio/transcriptions/realtime",
     "mistral_batch_model": "voxtral-mini-latest",
     # Whisper through any OpenAI-compatible endpoint: hosted OpenAI by default,
     # or a self-hosted server (Speaches, whisper.cpp, LocalAI, vLLM, WhisperX)
     "whisper_base_url": "https://api.openai.com/v1",
     "whisper_batch_model": "whisper-1",
-    "whisper_live_model": "",  # streaming not wired for Whisper
+    # captions come from the ordinary endpoint over a sliding window, so the
+    # batch model works unless a faster one is set here
+    "whisper_live_model": "",
     # Vosk: fully offline, WebSocket protocol, no key
     "vosk_url": "ws://localhost:2700",
     "vosk_batch_model": "",  # the model is chosen server-side
@@ -183,10 +200,13 @@ def providers_summary(store: ConfigStore) -> dict:
             "deepgram_key_hint": key_hint(store, "deepgram_api_key"),
             "deepgram_live_model": get_setting(store, "deepgram_live_model"),
             "deepgram_batch_model": get_setting(store, "deepgram_batch_model"),
+            "deepgram_live_url": get_setting(store, "deepgram_live_url"),
             "whisper_configured": bool(store.get_value("whisper_api_key")),
             "whisper_key_hint": key_hint(store, "whisper_api_key"),
             "whisper_base_url": get_setting(store, "whisper_base_url"),
             "whisper_batch_model": get_setting(store, "whisper_batch_model"),
+            "whisper_live_model": get_setting(store, "whisper_live_model"),
+            "mistral_live_url": get_setting(store, "mistral_live_url"),
             "vosk_url": get_setting(store, "vosk_url"),
             "vosk_batch_model": get_setting(store, "vosk_batch_model"),
         },

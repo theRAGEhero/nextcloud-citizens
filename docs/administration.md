@@ -27,12 +27,17 @@ Open **Citizens → Settings** (visible to Nextcloud administrators only).
 
 **Transcription.** Four engines are supported:
 
-| Engine | Runs | Speaker labels | Notes |
+| Engine | Runs | Speaker labels | Live captions |
 |---|---|---|---|
-| Deepgram | hosted | yes | best transcripts; the only engine with live captions |
-| Mistral (Voxtral) | hosted | yes | hosted alternative |
-| Whisper (OpenAI-compatible) | hosted **or your own server** | only on diarizing servers | any endpoint speaking the OpenAI audio API: OpenAI, Speaches, whisper.cpp, LocalAI, vLLM, WhisperX |
-| Vosk | **your own server**, offline | no | no punctuation or capitalisation; nothing leaves your network |
+| Deepgram | hosted | yes | native streaming, with speakers |
+| Mistral (Voxtral) | hosted | on final transcripts | Voxtral Realtime, no speakers while live |
+| Whisper (OpenAI-compatible) | hosted **or your own server** | only on diarizing servers | rolling 20-second windows; a line may be revised |
+| Vosk | **your own server**, offline | no | native streaming, no punctuation |
+
+Any endpoint speaking the OpenAI audio API works for Whisper (OpenAI itself,
+Speaches, whisper.cpp, LocalAI, vLLM, WhisperX). Deepgram's caption endpoint is
+configurable too, so a self-hosted server speaking the same streaming protocol —
+WhisperLiveKit, for example — can drive captions without leaving your network.
 
 Paste the API key for hosted engines, or the endpoint URL for self-hosted ones,
 and use the *Test* button before saving — it checks what you typed.
@@ -60,7 +65,7 @@ are never sent to browsers, never written to logs, and never reach the phones.
 | Step | What is sent | Where | When |
 |---|---|---|---|
 | Transcription | the assembled audio of one recording | Deepgram, Mistral, or the Whisper endpoint you configure (which can be your own server) | only after an admin configures an engine |
-| Live captions | ~10-second audio chunks during recording | Deepgram | only if live captions are enabled |
+| Live captions | ~10-second audio chunks during recording | whichever engine is configured — none if it is self-hosted | only if live captions are enabled |
 | Analysis | transcript text (never audio) | the configured endpoint — may be your own server | only after an admin configures it |
 
 Audio, transcripts, findings and reports live in the app's own persistent

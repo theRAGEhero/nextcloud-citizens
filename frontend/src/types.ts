@@ -139,6 +139,7 @@ export interface ProvidersSummary {
 		deepgram_key_hint: string
 		deepgram_live_model: string
 		deepgram_batch_model: string
+		deepgram_live_url: string
 		whisper_configured: boolean
 		whisper_key_hint: string
 		whisper_base_url: string

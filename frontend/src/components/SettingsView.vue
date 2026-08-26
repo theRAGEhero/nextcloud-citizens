@@ -23,14 +23,20 @@ const mistralBatchModel = ref('')
 const deepgramKey = ref('')
 const deepgramLiveModel = ref('')
 const deepgramBatchModel = ref('')
+const deepgramLiveUrl = ref('')
 const whisperKey = ref('')
 const whisperBaseUrl = ref('')
 const whisperBatchModel = ref('')
 const voskUrl = ref('')
 const voskBatchModel = ref('')
 
-// live captions currently exist only for Deepgram (see live_captions.py)
-const LIVE_CAPABLE: SttProvider[] = ['deepgram']
+// every engine produces live captions, each through its own protocol
+const CAPTION_NOTE: Record<SttProvider, string> = {
+	deepgram: 'Live captions stream natively and carry speaker labels.',
+	mistral: 'Live captions use Voxtral Realtime; realtime output has no speaker labels.',
+	whisper: 'Live captions are produced from rolling 20-second windows, so a line may be revised as more audio arrives.',
+	vosk: 'Live captions stream natively from your Vosk server, without punctuation or speaker labels.',
+}
 const analysisBaseUrl = ref('')
 const analysisModel = ref('')
 const analysisKey = ref('')
@@ -94,6 +100,7 @@ async function reload(): Promise<void> {
 	mistralBatchModel.value = summary.value.stt.mistral_batch_model
 	deepgramLiveModel.value = summary.value.stt.deepgram_live_model
 	deepgramBatchModel.value = summary.value.stt.deepgram_batch_model
+	deepgramLiveUrl.value = summary.value.stt.deepgram_live_url
 	whisperBaseUrl.value = summary.value.stt.whisper_base_url
 	whisperBatchModel.value = summary.value.stt.whisper_batch_model
 	voskUrl.value = summary.value.stt.vosk_url
@@ -126,6 +133,7 @@ async function save(): Promise<void> {
 			mistral_batch_model: mistralBatchModel.value.trim(),
 			deepgram_live_model: deepgramLiveModel.value.trim(),
 			deepgram_batch_model: deepgramBatchModel.value.trim(),
+			deepgram_live_url: deepgramLiveUrl.value.trim(),
 			whisper_base_url: whisperBaseUrl.value.trim(),
 			whisper_batch_model: whisperBatchModel.value.trim(),
 			vosk_url: voskUrl.value.trim(),
@@ -231,12 +239,10 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 					</label>
 				</div>
 
-				<p
-					v-if="!LIVE_CAPABLE.includes(sttProvider)"
-					class="cz-muted"
-					style="font-size: 13px; margin: -6px 0 14px">
-					Live captions during recording are available with Deepgram only; other engines
-					still produce the full transcript after each round.
+				<p class="cz-muted" style="font-size: 13px; margin: -6px 0 14px">
+					{{ CAPTION_NOTE[sttProvider] }}
+					Captions are provisional — the canonical transcript is always produced from
+					the complete recording after the round.
 				</p>
 
 				<div v-if="sttProvider === 'mistral'" class="cz-fieldgrid">
@@ -262,8 +268,10 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 					</div>
 					<div class="cz-field">
 						<label>Live transcription model</label>
-						<input v-model="mistralLiveModel" type="text" placeholder="Voxtral Realtime — not yet active" />
-						<span class="cz-muted" style="font-size: 12px">Live captions with Mistral are not wired up yet.</span>
+						<input v-model="mistralLiveModel" type="text" placeholder="voxtral-mini-transcribe-realtime-2602" />
+						<span class="cz-muted" style="font-size: 12px">
+							Voxtral Realtime. Billed separately from the final transcription.
+						</span>
 					</div>
 				</div>
 				<div v-else-if="sttProvider === 'deepgram'" class="cz-fieldgrid">
@@ -290,6 +298,15 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 					<div class="cz-field">
 						<label>Live transcription model</label>
 						<input v-model="deepgramLiveModel" type="text" placeholder="nova-3" />
+					</div>
+					<div class="cz-field" style="grid-column: span 2">
+						<label>Live caption endpoint</label>
+						<input v-model="deepgramLiveUrl" type="text" placeholder="wss://api.deepgram.com/v1/listen" />
+						<span class="cz-muted" style="font-size: 12.5px">
+							Any server speaking Deepgram's streaming protocol works here — for
+							example a self-hosted WhisperLiveKit, which keeps captions on your
+							own infrastructure.
+						</span>
 					</div>
 				</div>
 
