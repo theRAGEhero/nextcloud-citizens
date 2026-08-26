@@ -74,7 +74,7 @@ pipeline is tested end to end, but automatic retention (scheduled deletion of au
 and an in-app participant consent notice are still to come. Organizers running real
 assemblies should have a privacy notice and a retention practice of their own.
 	]]></description>
-	<version>0.6.0-beta.3</version>
+	<version>0.6.0-beta.4</version>
 	<licence>AGPL-3.0-or-later</licence>
 	<author mail="philip@decentsoftwa.re">Philip</author>
 	<documentation>
@@ -102,13 +102,17 @@ assemblies should have a privacy notice and a retention practice of their own.
 		<docker-install>
 			<registry>ghcr.io</registry>
 			<image>theragehero/citizens</image>
-			<image-tag>0.6.0-beta.3</image-tag>
+			<image-tag>0.6.0-beta.4</image-tag>
 		</docker-install>
 		<!-- Route regexes are matched against the request path WITHOUT a
 		     leading slash on AppAPI <= 33 and WITH one on 34+; the escaped
 		     bare-path form below is the only one that works on both.
 		     Order matters on AppAPI 34+: the first route matching path+verb
-		     wins outright, so narrow routes MUST precede catch-alls. -->
+		     wins outright, so narrow routes MUST precede catch-alls.
+		     Only GET, POST, PUT and DELETE are listed because AppAPI's proxy
+		     (ExAppProxy#ExAppGet/Post/Put/Delete) registers no other verb:
+		     a PATCH is answered 405 by Nextcloud's router before this table
+		     is ever consulted. -->
 		<routes>
 			<route>
 				<url>^js\/.*</url>
@@ -139,7 +143,7 @@ assemblies should have a privacy notice and a retention practice of their own.
 			</route>
 			<route>
 				<url>^api\/v1\/.*</url>
-				<verb>GET,POST,PUT,PATCH,DELETE</verb>
+				<verb>GET,POST,PUT,DELETE</verb>
 				<access_level>USER</access_level>
 			</route>
 			<!-- the recorder page itself and its bundled assets -->

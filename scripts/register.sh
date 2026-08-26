@@ -11,6 +11,9 @@
 # (AppAPI's proxy route is /proxy/{appId}/{other}; {other} = "js/foo.js"),
 # and the pattern is wrapped in /.../i delimiters server-side — so patterns
 # must start with e.g. ^js\/ and never with ^\/.
+#
+# Verbs stay within GET/POST/PUT/DELETE: AppAPI's proxy registers handlers for
+# those four only, so a PATCH never reaches this route table at all.
 set -eu
 . "$(dirname "$0")/dev-env.sh"
 
@@ -26,7 +29,7 @@ JSON_INFO=$(cat <<EOF
 {"url":"^img\\\\/.*","verb":"GET","access_level":1,"headers_to_exclude":[]},
 {"url":"^api\\\\/v1\\\\/admin\\\\/.*","verb":"GET,POST,PUT,DELETE","access_level":2,"headers_to_exclude":[]},
 {"url":"^api\\\\/v1\\\\/public\\\\/.*","verb":"GET,POST","access_level":0,"headers_to_exclude":[]},
-{"url":"^api\\\\/v1\\\\/.*","verb":"GET,POST,PUT,PATCH,DELETE","access_level":1,"headers_to_exclude":[]},
+{"url":"^api\\\\/v1\\\\/.*","verb":"GET,POST,PUT,DELETE","access_level":1,"headers_to_exclude":[]},
 {"url":"^recorder.*","verb":"GET","access_level":0,"headers_to_exclude":[]}
 ]}
 EOF

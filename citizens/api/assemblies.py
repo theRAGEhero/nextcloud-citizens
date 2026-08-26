@@ -51,7 +51,7 @@ def get_assembly(assembly_id: str, user: CurrentUser, session: DB):
     return _detail(session, svc.get_owned_assembly(session, assembly_id, user))
 
 
-@router.patch("/assemblies/{assembly_id}", response_model=schemas.AssemblyDetail)
+@router.put("/assemblies/{assembly_id}", response_model=schemas.AssemblyDetail)
 def update_assembly(assembly_id: str, data: schemas.AssemblyUpdate, user: CurrentUser, session: DB):
     assembly = svc.get_owned_assembly(session, assembly_id, user)
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -78,7 +78,7 @@ def add_round(assembly_id: str, data: schemas.RoundIn, user: CurrentUser, sessio
     return svc.add_round(session, assembly, data)
 
 
-@router.patch("/rounds/{round_id}", response_model=schemas.RoundOut)
+@router.put("/rounds/{round_id}", response_model=schemas.RoundOut)
 def update_round(round_id: str, data: schemas.RoundUpdate, user: CurrentUser, session: DB):
     round_ = svc.get_owned_round(session, round_id, user)
     return svc.update_round(session, round_, data)

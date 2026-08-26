@@ -113,7 +113,7 @@ class FindingUpdate(BaseModel):
     summary: str | None = Field(default=None, min_length=1, max_length=4000)
 
 
-@router.patch("/findings/{finding_id}")
+@router.put("/findings/{finding_id}")
 def update_finding(finding_id: str, data: FindingUpdate, user: CurrentUser, session: DB):
     finding = session.get(Finding, finding_id)
     if finding is None:

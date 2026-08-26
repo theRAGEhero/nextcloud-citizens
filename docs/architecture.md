@@ -30,6 +30,12 @@ Grows alongside the code; currently covers Milestone 0.
   - Route URL regexes are matched against the path **without** a leading slash
     and are wrapped in `/.../i` delimiters server-side — patterns must look
     like `^js\/.*`, never `^/js/.*` (a leading `/` breaks the pattern).
+  - The proxy forwards **GET, POST, PUT and DELETE only**. AppAPI registers one
+    controller per verb (`ExAppProxy#ExAppGet/Post/Put/Delete`) and there is no
+    PATCH handler, so a PATCH is answered **405 by Nextcloud's own router** —
+    before the route table above is consulted, and without reaching the app at
+    all. Partial updates therefore use PUT. `tests/unit/test_proxy_verbs.py`
+    fails the build if any route or client drifts back to PATCH.
   - The proxy checks `$userId` from the **Nextcloud session** — basic auth is
     not processed on the proxy controller; browsers work, bare curl does not.
   - The browser-facing proxy URL on this server is

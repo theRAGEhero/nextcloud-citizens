@@ -123,7 +123,7 @@ def test_round_management(client):
     assert added.json()["position"] == 3
 
     # move it to the front
-    moved = client.patch(f"/api/v1/rounds/{added.json()['id']}", json={"position": 1})
+    moved = client.put(f"/api/v1/rounds/{added.json()['id']}", json={"position": 1})
     assert moved.json()["position"] == 1
     detail = client.get(f"/api/v1/assemblies/{assembly['id']}").json()
     assert [r["title"] for r in detail["rounds"]] == ["Round 3", "Round 1", "Round 2"]

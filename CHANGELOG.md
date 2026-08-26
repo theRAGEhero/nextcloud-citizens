@@ -4,6 +4,21 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Fixed: Approve and Reject returned HTTP 405 — 2026-08-26 (v0.6.0-beta.4)
+
+- **Reviewing an AI finding now works.** Approve, Reject and Save-&-approve
+  failed with a red `HTTP 405`. The cause was not in this app: AppAPI's proxy
+  registers handlers for GET, POST, PUT and DELETE only, so the PATCH request
+  was rejected by Nextcloud's router and never arrived. All partial-update
+  endpoints now use PUT.
+- **Two more repairs that came with it.** Editing an assembly (Overview tab)
+  and editing or reordering rounds (Rounds tab) used the same verb and had
+  never worked through the proxy either.
+- New `tests/unit/test_proxy_verbs.py` fails the build if any route or client
+  uses a verb the proxy cannot forward, or if `info.xml` stops declaring a verb
+  the API actually uses — the existing suite could not catch this, because it
+  drives the app directly and bypasses the proxy that does the rejecting.
+
 ### Live captions for every engine — 2026-08-26 (v0.6.0-beta.3)
 
 - **Live captions are no longer Deepgram-only.** Every configured engine now

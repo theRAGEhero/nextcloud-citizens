@@ -160,12 +160,12 @@ def test_full_analysis_chain_and_report(pipeline):
     assert draft_report["rounds"][0]["cross_table"][0]["is_draft"] is True
 
     # review: approve table finding with an edit → EDITED_AND_APPROVED
-    updated = client.patch(
+    updated = client.put(
         f"/api/v1/findings/{table_findings[0]['id']}",
         json={"status": "APPROVED", "title": "Extend evening and weekend bus service"},
     ).json()
     assert updated["status"] == "EDITED_AND_APPROVED"
-    client.patch(f"/api/v1/findings/{cross['id']}", json={"status": "APPROVED"})
+    client.put(f"/api/v1/findings/{cross['id']}", json={"status": "APPROVED"})
 
     report = client.get(f"/api/v1/assemblies/{pipeline['assembly']['id']}/report").json()
     round_report = report["rounds"][0]

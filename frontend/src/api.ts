@@ -45,6 +45,9 @@ export class ApiError extends Error {
 	}
 }
 
+// Partial updates use PUT, never PATCH: AppAPI's proxy registers handlers for
+// GET/POST/PUT/DELETE only, so a PATCH is answered 405 by Nextcloud's router
+// and never reaches the app. tests/unit/test_proxy_verbs.py enforces this.
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
 	const response = await fetch(BASE + path, {
 		method,
@@ -80,13 +83,13 @@ export const api = {
 	}) => request<AssemblyCreated>('POST', '/api/v1/assemblies', data),
 	getAssembly: (id: string) => request<AssemblyDetail>('GET', `/api/v1/assemblies/${id}`),
 	updateAssembly: (id: string, data: Record<string, unknown>) =>
-		request<AssemblyDetail>('PATCH', `/api/v1/assemblies/${id}`, data),
+		request<AssemblyDetail>('PUT', `/api/v1/assemblies/${id}`, data),
 	deleteAssembly: (id: string) => request<void>('DELETE', `/api/v1/assemblies/${id}`),
 
 	addRound: (assemblyId: string, data: RoundIn) =>
 		request<Round>('POST', `/api/v1/assemblies/${assemblyId}/rounds`, data),
 	updateRound: (roundId: string, data: Partial<RoundIn> & { position?: number }) =>
-		request<Round>('PATCH', `/api/v1/rounds/${roundId}`, data),
+		request<Round>('PUT', `/api/v1/rounds/${roundId}`, data),
 	deleteRound: (roundId: string) => request<void>('DELETE', `/api/v1/rounds/${roundId}`),
 
 	listParticipants: (assemblyId: string) =>
@@ -125,7 +128,7 @@ export const api = {
 	roundFindings: (roundId: string) =>
 		request<RoundFindings>('GET', `/api/v1/rounds/${roundId}/findings`),
 	updateFinding: (findingId: string, payload: { status?: string; title?: string; summary?: string }) =>
-		request<unknown>('PATCH', `/api/v1/findings/${findingId}`, payload),
+		request<unknown>('PUT', `/api/v1/findings/${findingId}`, payload),
 	requestAnalysis: (roundId: string, force = false) =>
 		request<{ queued: number }>('POST', `/api/v1/rounds/${roundId}/analyze`, { force }),
 	assemblyReport: (assemblyId: string, includeDrafts: boolean) =>
