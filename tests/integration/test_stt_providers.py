@@ -155,3 +155,96 @@ def test_dispatch_rejects_unconfigured_endpoint(monkeypatch, tmp_path):
         transcription_svc.transcribe_recording(Session(), store, Recording())
     get_settings.cache_clear()
     assert excinfo.value.permanent is True
+
+
+class _VoskStore:
+    def __init__(self, mapping):
+        self.values = {"vosk_language_models": mapping} if mapping is not None else {}
+
+    def get_value(self, key):
+        return self.values.get(key)
+
+    def set_value(self, key, value, sensitive=False):
+        self.values[key] = value
+
+    def delete_value(self, key):
+        self.values.pop(key, None)
+
+
+def test_vosk_model_is_chosen_by_the_session_language():
+    """One Vosk server holds a model per language; the assembly's language
+    selects it. Without this every language would hit the same model and the
+    transcript would be nonsense for all but one of them."""
+    store = _VoskStore('{"it": "/models/it", "en": "/models/en"}')
+    assert provider_config.vosk_model_for(store, "it") == "/models/it"
+    assert provider_config.vosk_model_for(store, "en") == "/models/en"
+    # a regional code must still find its language
+    assert provider_config.vosk_model_for(store, "it-IT") == "/models/it"
+    assert provider_config.vosk_model_for(store, "EN") == "/models/en"
+    # an unmapped language sends no model, so the server default still works
+    assert provider_config.vosk_model_for(store, "de") == ""
+
+
+def test_vosk_model_map_survives_bad_configuration():
+    """A corrupt map must degrade to the server default, never stop a recording
+    from being transcribed."""
+    assert provider_config.vosk_model_for(_VoskStore(None), "it") == ""
+    assert provider_config.vosk_model_for(_VoskStore(""), "it") == ""
+    assert provider_config.vosk_model_for(_VoskStore("not json"), "it") == ""
+    assert provider_config.vosk_model_for(_VoskStore('["a", "b"]'), "it") == ""
+    assert provider_config.vosk_model_for(_VoskStore('{"it": ""}'), "it") == ""
+
+
+def test_live_captions_pick_the_model_for_the_table_language():
+    """The caption path resolves from the cached snapshot, so it must agree
+    with the batch resolver — and must never make an OCS call per chunk."""
+    from citizens.services.live_captions import LIVE_CAPTIONS
+
+    snapshot = {"vosk_models": {"it": "/models/it", "en": "/models/en"}}
+    assert LIVE_CAPTIONS._resolve_vosk_model(snapshot, "it") == "/models/it"
+    assert LIVE_CAPTIONS._resolve_vosk_model(snapshot, "it-IT") == "/models/it"
+    assert LIVE_CAPTIONS._resolve_vosk_model(snapshot, "de") == ""
+    assert LIVE_CAPTIONS._resolve_vosk_model({}, "it") == ""
+
+
+def test_vosk_client_sends_the_model_it_was_given():
+    """The config frame must carry the model, otherwise the mapping is
+    cosmetic: every language would land on whatever the server loaded first."""
+    import asyncio
+    import json as jsonlib
+
+    from citizens.providers.transcription import vosk as vosk_provider
+
+    sent = []
+
+    class _FakeSocket:
+        async def send(self, message):
+            sent.append(message)
+
+        async def recv(self):
+            return jsonlib.dumps({"text": ""})
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+    def fake_connect(*_args, **_kwargs):
+        return _FakeSocket()
+
+    import websockets.asyncio.client as ws_client
+
+    original = ws_client.connect
+    ws_client.connect = fake_connect
+    try:
+        asyncio.run(vosk_provider._stream("ws://x:2700", b"\0" * 640, "/models/it"))
+        config = jsonlib.loads(sent[0])["config"]
+        assert config["model"] == "/models/it"
+        assert config["sample_rate"] == vosk_provider.SAMPLE_RATE
+
+        sent.clear()
+        asyncio.run(vosk_provider._stream("ws://x:2700", b"\0" * 640, ""))
+        assert "model" not in jsonlib.loads(sent[0])["config"]
+    finally:
+        ws_client.connect = original

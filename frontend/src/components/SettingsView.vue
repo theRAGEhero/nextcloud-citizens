@@ -6,6 +6,7 @@ import {
 	mdiCheck,
 	mdiClose,
 	mdiDeleteClockOutline,
+	mdiPlus,
 	mdiImageOutline,
 	mdiMicrophoneOutline,
 } from '@mdi/js'
@@ -36,6 +37,7 @@ const whisperBaseUrl = ref('')
 const whisperBatchModel = ref('')
 const voskUrl = ref('')
 const voskBatchModel = ref('')
+const voskModels = ref<{ language: string; path: string }[]>([])
 
 // every engine produces live captions, each through its own protocol
 const CAPTION_NOTE: Record<SttProvider, string> = {
@@ -113,6 +115,9 @@ async function reload(): Promise<void> {
 	whisperBatchModel.value = summary.value.stt.whisper_batch_model
 	voskUrl.value = summary.value.stt.vosk_url
 	voskBatchModel.value = summary.value.stt.vosk_batch_model
+	voskModels.value = Object.entries(summary.value.stt.vosk_language_models ?? {}).map(
+		([language, path]) => ({ language, path }),
+	)
 	analysisBaseUrl.value = summary.value.analysis.base_url
 	analysisModel.value = summary.value.analysis.model
 	analysisEnabled.value = summary.value.analysis.enabled
@@ -147,6 +152,13 @@ async function save(): Promise<void> {
 			whisper_batch_model: whisperBatchModel.value.trim(),
 			vosk_url: voskUrl.value.trim(),
 			vosk_batch_model: voskBatchModel.value.trim(),
+			vosk_language_models: JSON.stringify(
+				Object.fromEntries(
+					voskModels.value
+						.filter((row) => row.language.trim() && row.path.trim())
+						.map((row) => [row.language.trim().toLowerCase(), row.path.trim()]),
+				),
+			),
 			analysis_base_url: analysisBaseUrl.value.trim(),
 			analysis_model: analysisModel.value.trim(),
 			analysis_enabled: analysisEnabled.value,
@@ -383,12 +395,38 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 							port 2700). No API key, no internet: audio never leaves your network.
 						</span>
 					</div>
+					<div class="cz-field" style="grid-column: span 2">
+						<label>Model for each language</label>
+						<span class="cz-muted" style="font-size: 12.5px; margin-bottom: 8px">
+							Vosk needs a separate model per language, and one server can hold several.
+							The language you choose for an assembly selects the model. A language with
+							no entry here uses whatever model the server started with.
+						</span>
+						<div v-for="(row, index) in voskModels" :key="index" class="cz-row" style="flex-wrap: nowrap; margin-bottom: 6px">
+							<input
+								v-model="row.language"
+								type="text"
+								style="width: 90px"
+								placeholder="it"
+								aria-label="Language code" />
+							<input
+								v-model="row.path"
+								type="text"
+								style="flex: 1"
+								placeholder="/models/it"
+								aria-label="Model path on the Vosk server" />
+							<CzButton small :icon="mdiClose" title="Remove" @click="voskModels.splice(index, 1)" />
+						</div>
+						<CzButton small :icon="mdiPlus" @click="voskModels.push({ language: '', path: '' })">
+							Add a language
+						</CzButton>
+					</div>
 					<div class="cz-field">
 						<label>Model label (optional)</label>
-						<input v-model="voskBatchModel" type="text" placeholder="vosk-model-en-us-0.22" />
+						<input v-model="voskBatchModel" type="text" placeholder="vosk-model-small-it-0.22" />
 						<span class="cz-muted" style="font-size: 12.5px">
-							Recorded with the transcript for reference; the actual model is chosen on
-							the Vosk server.
+							Recorded with the transcript for reference. Used as the model only if the
+							language is not listed above.
 						</span>
 					</div>
 					<div class="cz-field" style="grid-column: span 2">

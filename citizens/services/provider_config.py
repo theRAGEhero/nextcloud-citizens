@@ -6,6 +6,7 @@ API keys are stored with the `sensitive` flag (encrypted by Nextcloud, brief
 §28) and are never returned by any API — only `configured` + a short hint.
 """
 
+import json
 import time
 from typing import Protocol
 
@@ -38,11 +39,14 @@ def live_stt_snapshot() -> dict:
             "model": get_setting(store, f"{provider}_live_model"),
             # the socket/endpoint each caption engine connects to
             "endpoint": get_setting(store, LIVE_ENDPOINT_KEYS.get(provider, "")),
+            # Vosk only: language -> model path, carried here so the caption
+            # path never has to make an OCS call per chunk
+            "vosk_models": vosk_language_models(store) if provider == "vosk" else {},
         }
     except Exception:
         log.warning("live_stt_snapshot_failed", exc_info=True)
         snapshot = {"enabled": False, "provider": "", "api_key": None, "model": "",
-                    "endpoint": ""}
+                    "endpoint": "", "vosk_models": {}}
     _live_snapshot = (now, snapshot)
     return snapshot
 
@@ -90,6 +94,39 @@ def data_handling_summary() -> dict:
         summary = {}
     _data_handling_cache = (now, summary)
     return summary
+
+
+def vosk_language_models(store: "ConfigStore") -> dict[str, str]:
+    """Language code -> model path on the Vosk server. Never raises: a corrupt
+    value must not stop transcription, it just falls back to the default."""
+    raw = get_setting(store, "vosk_language_models").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        log.warning("vosk_language_models_unparsable")
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {
+        str(key).strip().lower(): str(value).strip()
+        for key, value in parsed.items()
+        if str(value).strip()
+    }
+
+
+def vosk_model_for(store: "ConfigStore", language: str) -> str:
+    """Model path for this session's language, or "" to use the server default.
+
+    `it-IT` and `it` are the same language here — assemblies store a plain code
+    today, but a regional one must not silently miss its model.
+    """
+    models = vosk_language_models(store)
+    if not models:
+        return ""
+    code = (language or "").strip().lower()
+    return models.get(code) or models.get(code.split("-")[0], "")
 
 
 def stt_is_hosted(store: "ConfigStore", provider: str) -> bool:
@@ -186,7 +223,12 @@ DEFAULTS = {
     "whisper_live_model": "",
     # Vosk: fully offline, WebSocket protocol, no key
     "vosk_url": "ws://localhost:2700",
-    "vosk_batch_model": "",  # the model is chosen server-side
+    # Vosk needs a separate model per language, but one server can hold several:
+    # a JSON map of language code -> model path ON THE SERVER, e.g.
+    # {"it": "/models/it", "en": "/models/en"}. A language with no entry uses
+    # whichever model the server was started with, so it still transcribes.
+    "vosk_language_models": "",
+    "vosk_batch_model": "",  # legacy: superseded by vosk_language_models
     "vosk_live_model": "",
     "analysis_base_url": "https://api.mistral.ai/v1",
     "analysis_model": "mistral-large-latest",
@@ -306,6 +348,7 @@ def providers_summary(store: ConfigStore) -> dict:
             "whisper_live_model": get_setting(store, "whisper_live_model"),
             "mistral_live_url": get_setting(store, "mistral_live_url"),
             "vosk_url": get_setting(store, "vosk_url"),
+            "vosk_language_models": vosk_language_models(store),
             "vosk_batch_model": get_setting(store, "vosk_batch_model"),
         },
         "analysis": {

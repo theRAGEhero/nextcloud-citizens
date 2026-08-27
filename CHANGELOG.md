@@ -4,6 +4,19 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### A Vosk model per language — 2026-08-27 (v0.6.0-beta.8)
+
+- **Vosk can now use a different model for each language**, which is how Vosk
+  works: unlike the other engines it has no single multilingual model. Set one
+  server URL and a row per language in Settings, and the language you choose for
+  an assembly selects the model — for both the final transcript and live
+  captions. A language with no row still transcribes, using whatever model the
+  server started with.
+- **`scripts/vosk-up.sh` runs a Vosk server on your own machine** with Italian
+  and English models, prints the exact settings to paste in, and needs no
+  internet access at recording time. One server holds every language.
+
+
 ### Fixed: Settings lockout and upload errors — 2026-08-27 (v0.6.0-beta.7)
 
 Two regressions from yesterday's release, and the underlying cause of both.

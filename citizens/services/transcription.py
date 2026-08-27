@@ -90,10 +90,13 @@ def transcribe_recording(
         url = provider_config.get_setting(store, "vosk_url")
         if not url:
             raise TranscriptionError("No Vosk server URL configured", permanent=True)
+        # one server can hold a model per language; pick this assembly's
+        model = provider_config.vosk_model_for(store, language) or provider_config.get_setting(
+            store, "vosk_batch_model"
+        )
+        log.info("vosk_model_selected", language=language, model=model or "(server default)")
         normalized = vosk_provider.transcribe_file(
-            "", audio_path, recording.mime_type, language,
-            model=provider_config.get_setting(store, "vosk_batch_model"),
-            base_url=url,
+            "", audio_path, recording.mime_type, language, model=model, base_url=url,
         )
     else:
         raise TranscriptionError(f"Unknown STT provider {provider}", permanent=True)

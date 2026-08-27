@@ -190,12 +190,15 @@ class VoskSession(_BaseSession):
 
         url = self.endpoint or "ws://localhost:2700"
         try:
-            # never send "model" in the config: on a shared vosk-server that
-            # swaps the model for every connected client
             async with connect(url, ping_interval=20, ping_timeout=60) as ws:
-                await ws.send(
-                    json.dumps({"config": {"sample_rate": live_audio.SAMPLE_RATE, "words": True}})
-                )
+                config = {"sample_rate": live_audio.SAMPLE_RATE, "words": True}
+                if self.model:
+                    # the model for this table's language. On a stock
+                    # vosk-server this would swap the model for every connected
+                    # client, so scripts/vosk-up.sh runs a patched asr_server.py
+                    # that keeps the choice per-connection.
+                    config["model"] = self.model
+                await ws.send(json.dumps({"config": config}))
                 log.info("live_stt_session_started", recording_id=self.recording_id, provider="vosk")
                 while True:
                     item = await self.queue.get()
@@ -485,6 +488,14 @@ class LiveCaptionManager:
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
 
+    @staticmethod
+    def _resolve_vosk_model(config: dict, language: str) -> str:
+        """Model path for this language, matching provider_config.vosk_model_for
+        but reading the snapshot rather than the config store."""
+        models = config.get("vosk_models") or {}
+        code = (language or "").strip().lower()
+        return models.get(code) or models.get(code.split("-")[0], "")
+
     def feed(self, recording_id: str, data: bytes, config: dict, language: str) -> None:
         """Called from the (threadpool) chunk-upload path. Never raises."""
         try:
@@ -526,11 +537,18 @@ class LiveCaptionManager:
             self._sessions.pop(recording_id, None)
             session = None
         if session is None:
-            session_type = SESSION_TYPES[config["provider"]]
+            provider = config["provider"]
+            session_type = SESSION_TYPES[provider]
+            model = config.get("model", "")
+            if provider == "vosk":
+                # Vosk needs a model per language and one server can hold
+                # several, so this table's language picks it. Resolved from the
+                # cached snapshot — never an OCS call on the upload path.
+                model = self._resolve_vosk_model(config, language) or model
             session = session_type(
                 recording_id,
                 config.get("api_key") or "",
-                config.get("model", ""),
+                model,
                 language,
                 endpoint=config.get("endpoint", ""),
             )

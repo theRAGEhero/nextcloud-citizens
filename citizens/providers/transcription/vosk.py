@@ -53,7 +53,9 @@ def transcribe_file(
     """`api_key` is unused (vosk-server has no authentication) but kept so every
     provider adapter has the same signature."""
     pcm = _decode_to_pcm(path)
-    raw = asyncio.run(_stream(base_url or BASE_URL, pcm))
+    # `model` is a path ON THE SERVER, resolved from the assembly's language —
+    # one server can hold several models and each connection picks its own
+    raw = asyncio.run(_stream(base_url or BASE_URL, pcm, model))
     return normalize(raw, model=model, requested_language=language)
 
 
@@ -73,7 +75,7 @@ def _decode_to_pcm(path: Path) -> bytes:
     return result.stdout
 
 
-async def _stream(url: str, pcm: bytes) -> dict:
+async def _stream(url: str, pcm: bytes, model: str = "") -> dict:
     try:
         from websockets.asyncio.client import connect
     except ImportError:  # older websockets
@@ -82,9 +84,13 @@ async def _stream(url: str, pcm: bytes) -> dict:
     results: list[dict] = []
     try:
         async with connect(url, max_size=None, open_timeout=30) as websocket:
-            await websocket.send(
-                json.dumps({"config": {"sample_rate": SAMPLE_RATE, "words": True}})
-            )
+            config = {"sample_rate": SAMPLE_RATE, "words": True}
+            if model:
+                # names the model for THIS connection only; on the stock server
+                # it would swap the model for everyone, so scripts/vosk-up.sh
+                # runs a patched asr_server.py that keeps it per-connection
+                config["model"] = model
+            await websocket.send(json.dumps({"config": config}))
             for offset in range(0, len(pcm), FRAME_BYTES):
                 await websocket.send(pcm[offset : offset + FRAME_BYTES])
                 # the server answers exactly once per audio frame

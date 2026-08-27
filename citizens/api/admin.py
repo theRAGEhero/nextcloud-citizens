@@ -110,6 +110,8 @@ class ProvidersUpdate(BaseModel):
     whisper_live_model: str | None = Field(default=None, max_length=100)
     mistral_live_url: str | None = Field(default=None, max_length=500)
     vosk_url: str | None = Field(default=None, max_length=500)
+    # JSON map of language code -> model path on the Vosk server
+    vosk_language_models: str | None = Field(default=None, max_length=2000)
     vosk_batch_model: str | None = Field(default=None, max_length=100)
     analysis_base_url: str | None = Field(default=None, max_length=500)
     analysis_model: str | None = Field(default=None, max_length=200)

@@ -48,6 +48,41 @@ based, or OpenAI's `gpt-4o-transcribe-diarize` model) keeps speaker labels;
 plain Whisper and Vosk produce transcripts without them, and reports then omit
 the "who said it" attribution while keeping every quote and finding.
 
+### Running Vosk yourself
+
+Vosk needs **a separate model per language**, but one server can hold several:
+each recording names the model it wants, and the language you set on an assembly
+chooses it.
+
+`scripts/vosk-up.sh` starts a server with Italian and English small models and
+prints the values to paste into Settings. Adding a language is one more entry in
+the script's model table plus one row in Settings — no second container. Models
+are downloaded once to `/srv/citizens-vosk/models`, and `scripts/vosk-down.sh`
+stops the server (`--purge` also removes the models).
+
+In Settings → Speech to text → Vosk, set the server URL and one row per
+language, mapping a language code to the model path *on the server*:
+
+```
+Server URL          ws://citizens-vosk:2700
+it                  /models/it
+en                  /models/en
+```
+
+A language with no row uses whatever model the server started with, so it still
+transcribes rather than failing.
+
+Two things worth knowing. The server must be reachable **from the app
+container**, so use the container name rather than `localhost` — `localhost`
+would point the app at itself. And Vosk has no authentication, so never publish
+its port beyond `127.0.0.1`; the app reaches it over the shared Docker network.
+
+The script runs a lightly patched `asr_server.py` (in `scripts/vosk/`): upstream
+switches models process-wide and reloads from disk on every connection, which
+would let two assemblies in different languages take each other's model. The
+patch makes the choice per-connection and caches loaded models. Both small
+models together use about 340 MB.
+
 **AI analysis.** Any OpenAI-compatible endpoint works: Mistral, OpenAI, or a
 self-hosted server such as Ollama or vLLM. Set the base URL, model and key.
 Choosing a self-hosted endpoint keeps transcripts on your own infrastructure.

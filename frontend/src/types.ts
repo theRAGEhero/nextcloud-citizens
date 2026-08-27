@@ -146,6 +146,8 @@ export interface ProvidersSummary {
 		whisper_base_url: string
 		whisper_batch_model: string
 		vosk_url: string
+		/** language code -> model path on the Vosk server */
+		vosk_language_models: Record<string, string>
 		vosk_batch_model: string
 	}
 	analysis: {
