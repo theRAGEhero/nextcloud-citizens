@@ -52,9 +52,15 @@ def require_admin(
 
     Fails closed: if group membership cannot be checked, the request is
     refused rather than allowed.
+
+    Use OCS `cloud/user` — the *current* user's own record — not the
+    provisioning API. `nc.users.get_user(...)` returns 401 for an ExApp, which
+    is not permitted to read arbitrary users, so a check built on it fails
+    closed for everyone and silently removes Settings from real admins.
+    `nc_app` already binds this client to the requesting user.
     """
     try:
-        groups = nc.users.get_details(user).groups
+        groups = nc.ocs("GET", "/ocs/v1.php/cloud/user").get("groups") or []
     except Exception:
         log.warning("admin_check_unavailable", exc_info=True)
         raise HTTPException(

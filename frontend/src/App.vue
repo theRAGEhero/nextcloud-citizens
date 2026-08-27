@@ -3,7 +3,7 @@
 <script setup lang="ts">
 import { mdiAccountVoice, mdiCog, mdiMenu, mdiPlus } from '@mdi/js'
 import { computed, onMounted, ref } from 'vue'
-import { api } from './api'
+import { api, ApiError } from './api'
 import AssemblyDetail from './components/AssemblyDetail.vue'
 import AssemblyWizard from './components/AssemblyWizard.vue'
 import SettingsView from './components/SettingsView.vue'
@@ -44,8 +44,12 @@ onMounted(async () => {
 	try {
 		await api.adminPing()
 		isAdmin.value = true
-	} catch {
-		isAdmin.value = false
+	} catch (err) {
+		// Only a definite "you are not an administrator" hides Settings. Any
+		// other failure keeps it visible so the admin sees the real error on
+		// the page — a broken check once made Settings vanish with no
+		// explanation for someone who was entitled to it.
+		isAdmin.value = !(err instanceof ApiError && err.status === 403)
 	}
 })
 

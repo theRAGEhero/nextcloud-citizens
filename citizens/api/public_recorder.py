@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from citizens.config import get_settings
 from citizens.db.models import Assembly, RecorderSession, Recording
 from citizens.db.models.base import utcnow
-from citizens.db.session import get_db
+from citizens.db.session import get_db, get_read_db
 from citizens.security.rate_limit import (
     JOIN_IP_LIMITER,
     JOIN_TOKEN_LIMITER,
@@ -33,13 +33,17 @@ from citizens.storage.paths import device_log_path
 router = APIRouter(prefix="/public")
 
 DB = Annotated[Session, Depends(get_db)]
+# for pure polls: no BEGIN IMMEDIATE, so readers never queue behind writers
+ReadDB = Annotated[Session, Depends(get_read_db)]
 
 
-def _session_from_authorization(session: Session, authorization: str) -> RecorderSession:
+def _session_from_authorization(
+    session: Session, authorization: str, touch: bool = True
+) -> RecorderSession:
     scheme, _, bearer = authorization.partition(" ")
     if scheme.lower() != "bearer" or not bearer:
         raise HTTPException(status_code=401, detail="Missing recorder session token")
-    return rec_svc.get_session_by_bearer(session, bearer.strip())
+    return rec_svc.get_session_by_bearer(session, bearer.strip(), touch=touch)
 
 
 def get_recorder_session(
@@ -49,7 +53,19 @@ def get_recorder_session(
     return _session_from_authorization(session, authorization)
 
 
+def get_reading_session(
+    session: ReadDB,
+    authorization: Annotated[str, Header()] = "",
+) -> RecorderSession:
+    """Auth for poll endpoints: no write lock, and no last_seen_at write.
+
+    Liveness still comes from the heartbeat and chunk uploads every 10-20 s,
+    which is finer resolution than the monitor displays."""
+    return _session_from_authorization(session, authorization, touch=False)
+
+
 RecorderSess = Annotated[RecorderSession, Depends(get_recorder_session)]
+ReadingSess = Annotated[RecorderSession, Depends(get_reading_session)]
 
 
 class JoinIn(BaseModel):
@@ -69,7 +85,7 @@ def join(data: JoinIn, request: Request, session: DB):
 
 
 @router.get("/recorder/status")
-def status(recorder_session: RecorderSess, session: DB):
+def status(recorder_session: ReadingSess, session: ReadDB):
     return _assembly_state(session, recorder_session)
 
 
@@ -103,6 +119,10 @@ async def upload_chunk(
     # read, so one phone on congested venue WiFi stalled every other table
     # until they hit busy_timeout and got "database is locked".
     body = await request.body()
+    # Refresh the caption config here too, still before any query: it is cached
+    # for 30 s, and when the cache expires it makes an OCS call to Nextcloud.
+    # Doing that further down held the write lock across that call.
+    stt = live_stt_snapshot()
     recorder_session = _session_from_authorization(session, authorization)
     recording = rec_svc.get_session_recording(session, recorder_session, recording_id)
     result = rec_svc.receive_chunk(session, recording, sequence_number, x_chunk_sha256, body)
@@ -111,7 +131,7 @@ async def upload_chunk(
         # never affect the recording (brief §51)
         assembly = session.get(Assembly, recording.assembly_id)
         LIVE_CAPTIONS.feed(
-            recording.id, body, live_stt_snapshot(), assembly.language if assembly else ""
+            recording.id, body, stt, assembly.language if assembly else ""
         )
     return result
 
@@ -132,7 +152,7 @@ def complete(
 
 
 @router.get("/recorder/recordings/{recording_id}/live")
-def live_transcript(recording_id: str, recorder_session: RecorderSess, session: DB):
+def live_transcript(recording_id: str, recorder_session: ReadingSess, session: ReadDB):
     """Provisional live captions for this table's recording (may be empty or
     unavailable — that is never an error)."""
     recording = rec_svc.get_session_recording(session, recorder_session, recording_id)

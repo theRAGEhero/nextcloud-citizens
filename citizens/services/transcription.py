@@ -46,6 +46,11 @@ def transcribe_recording(
 
     assembly = session.get(Assembly, recording.assembly_id)
     language = assembly.language if assembly else ""
+    # release the DB write lock BEFORE reading provider config — those reads
+    # are OCS calls to Nextcloud, and a held job transaction 500s every API
+    # request after busy_timeout (expire_on_commit=False keeps `recording` and
+    # `assembly` usable afterwards)
+    session.commit()
     provider = provider_config.get_setting(store, "stt_provider")
 
     log.info(
@@ -54,9 +59,6 @@ def transcribe_recording(
         provider=provider,
         size_bytes=audio_path.stat().st_size,
     )
-    # release the DB write lock for the (potentially minutes-long) provider
-    # call — a held job transaction 500s every API request after busy_timeout
-    session.commit()
     if provider == "deepgram":
         key = store.get_value("deepgram_api_key")
         if not key:

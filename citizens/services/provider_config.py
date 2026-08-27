@@ -218,12 +218,22 @@ class ConfigStore(Protocol):
     def delete_value(self, key: str) -> None: ...
 
 
-def default_store() -> "AppConfigStore":
-    """Store for non-request contexts (background jobs). Builds its own
-    NextcloudApp client from the AppAPI environment."""
-    from nc_py_api import NextcloudApp
+_background_store: "AppConfigStore | None" = None
 
-    return AppConfigStore(NextcloudApp())
+
+def default_store() -> "AppConfigStore":
+    """Store for non-request contexts (background jobs).
+
+    The client is built once and reused: nc_py_api fetches
+    /cloud/capabilities on each new instance, so constructing one per call
+    doubled the round-trips on the sweep's hot path.
+    """
+    global _background_store
+    if _background_store is None:
+        from nc_py_api import NextcloudApp
+
+        _background_store = AppConfigStore(NextcloudApp())
+    return _background_store
 
 
 class AppConfigStore:

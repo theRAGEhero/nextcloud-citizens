@@ -25,6 +25,8 @@ from citizens.storage.space import require_room
 log = get_logger(__name__)
 
 SESSION_LIFETIME_HOURS = 16
+# how stale the device's "last contact" may be before we spend a write on it
+LAST_SEEN_RESOLUTION = 15.0
 MAX_CHUNK_BYTES = 5 * 1024 * 1024
 
 
@@ -51,7 +53,9 @@ def create_session_from_invite(session: Session, token: str) -> tuple[RecorderSe
     return recorder_session, bearer
 
 
-def get_session_by_bearer(session: Session, bearer: str) -> RecorderSession:
+def get_session_by_bearer(
+    session: Session, bearer: str, touch: bool = True
+) -> RecorderSession:
     recorder_session = session.execute(
         select(RecorderSession).where(RecorderSession.token_hash == hash_token(bearer))
     ).scalar_one_or_none()
@@ -61,7 +65,16 @@ def get_session_by_bearer(session: Session, bearer: str) -> RecorderSession:
         or recorder_session.expires_at < utcnow()
     ):
         raise HTTPException(status_code=401, detail="Recorder session invalid or expired")
-    recorder_session.last_seen_at = utcnow()
+    # Touch last_seen_at at most every LAST_SEEN_RESOLUTION. Writing it on every
+    # request made even a pure caption poll take SQLite's single write slot —
+    # about 12 write-locks a second at twenty tables, purely for bookkeeping the
+    # monitor only shows to the nearest few seconds.
+    now = utcnow()
+    if touch and (
+        recorder_session.last_seen_at is None
+        or (now - recorder_session.last_seen_at).total_seconds() >= LAST_SEEN_RESOLUTION
+    ):
+        recorder_session.last_seen_at = now
     return recorder_session
 
 

@@ -4,6 +4,38 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Fixed: Settings lockout and upload errors — 2026-08-27 (v0.6.0-beta.7)
+
+Two regressions from yesterday's release, and the underlying cause of both.
+
+- **Settings is accessible again.** The administrator check added yesterday
+  called a Nextcloud method that does not exist, so it failed for everyone and,
+  because it fails closed, silently removed Settings from real administrators.
+  It now asks Nextcloud for the signed-in user's own groups — the one call an
+  app of this kind is permitted to make. Verified against a live server for
+  both an administrator and a non-administrator before shipping.
+- **A broken check can no longer hide Settings without saying so.** Only a
+  definite "you are not an administrator" removes the entry; any other failure
+  leaves it visible so the error is on screen instead of invisible.
+- **Recording phones no longer see spurious "Network unavailable".** Uploads
+  were occasionally failing with a server error, which the phone reported as a
+  lost connection. No audio was ever at risk — the upload retried and
+  succeeded — but people were sent to check WiFi that was working. The phone
+  now distinguishes a server problem from a network problem and says so.
+- **The cause: the retention sweep held the database's single write slot while
+  waiting on Nextcloud**, once a minute, so an upload arriving at the wrong
+  moment timed out. Configuration is now read before the database is touched,
+  here and on the recording upload path, and the two other places that did the
+  same thing during transcription and analysis.
+- **Polling no longer competes with recording.** Caption and status polls took
+  the write lock even though they only read, and every request wrote a
+  "last seen" timestamp. At twenty tables that was roughly twelve write-locks a
+  second for bookkeeping. Both are gone.
+- A build-time check now fails if any background work reads configuration
+  inside a database transaction. This bug class had appeared three times and
+  been fixed with comments each time.
+
+
 ### Integrity, retention and consent — 2026-08-27 (v0.6.0-beta.6)
 
 Second of four rounds of production-readiness work.

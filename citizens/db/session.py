@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 _engine: Engine | None = None
 _session_factory: sessionmaker | None = None
+_read_session_factory: sessionmaker | None = None
 
 
 def sqlite_url(path: Path) -> str:
@@ -24,7 +25,7 @@ def sqlite_url(path: Path) -> str:
 
 
 def configure_database(db_url: str) -> Engine:
-    global _engine, _session_factory
+    global _engine, _session_factory, _read_session_factory
     connect_args = {"check_same_thread": False} if db_url.startswith("sqlite") else {}
     _engine = create_engine(db_url, connect_args=connect_args)
     if db_url.startswith("sqlite"):
@@ -34,6 +35,9 @@ def configure_database(db_url: str) -> Engine:
         # "database is locked" on a read→write lock upgrade.
         event.listen(_engine, "begin", _begin_immediate)
     _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
+    _read_session_factory = sessionmaker(
+        bind=_engine.execution_options(citizens_read_only=True), expire_on_commit=False
+    )
     return _engine
 
 
@@ -49,6 +53,11 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
 
 
 def _begin_immediate(conn) -> None:
+    # Read-only sessions opt out: taking the single writer slot for a query
+    # that cannot write throws away WAL's whole point, and polling endpoints
+    # (captions, status, monitor) are most of the traffic at twenty tables.
+    if conn.get_execution_options().get("citizens_read_only"):
+        return
     conn.exec_driver_sql("BEGIN IMMEDIATE")
 
 
@@ -76,4 +85,28 @@ def session_scope() -> Iterator[Session]:
 def get_db() -> Iterator[Session]:
     """FastAPI dependency."""
     with session_scope() as session:
+        yield session
+
+
+@contextmanager
+def read_only_scope() -> Iterator[Session]:
+    """A session that does NOT take SQLite's write lock.
+
+    Bound to an engine carrying the `citizens_read_only` execution option,
+    which `_begin_immediate` checks. Always rolled back: nothing reached
+    through here is allowed to have changed anything.
+    """
+    if _read_session_factory is None:
+        raise RuntimeError("Database is not configured; call configure_database() first")
+    session = _read_session_factory()
+    try:
+        yield session
+    finally:
+        session.rollback()
+        session.close()
+
+
+def get_read_db() -> Iterator[Session]:
+    """FastAPI dependency for endpoints that only read."""
+    with read_only_scope() as session:
         yield session

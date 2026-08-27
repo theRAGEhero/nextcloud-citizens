@@ -14,7 +14,7 @@ must never take a recording's audio with it.
 
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from citizens.db.models import Assembly, Recording
 from citizens.db.models.base import utcnow
@@ -92,6 +92,27 @@ def sweep_expired_audio() -> int:
     from citizens.services import files as files_svc
     from citizens.services import provider_config
 
+    # Read the config with NO transaction open. Doing it inside session_scope()
+    # held SQLite's single write slot across two HTTPS round-trips to Nextcloud,
+    # every 60 seconds, and chunk uploads that landed in that window exceeded
+    # busy_timeout and failed with "database is locked" (see runner.py's
+    # contract — this is the same rule, and this sweep broke it).
+    with session_scope() as session:
+        pending = session.execute(
+            select(func.count())
+            .select_from(Assembly)
+            .where(Assembly.closed_at.is_not(None), Assembly.audio_purged_at.is_(None))
+        ).scalar_one()
+    if not pending:
+        return 0
+    try:
+        default_days = int(provider_config.get_setting(
+            provider_config.default_store(), "audio_retention_days"
+        ) or 0)
+    except Exception:
+        log.warning("retention_default_unavailable", exc_info=True)
+        return 0
+
     now = utcnow()
     purged = 0
     with session_scope() as session:
@@ -102,15 +123,6 @@ def sweep_expired_audio() -> int:
                 )
             ).scalars()
         )
-        if not candidates:
-            return 0  # cheap DB check first: don't ask Nextcloud on every tick
-        try:
-            default_days = int(provider_config.get_setting(
-                provider_config.default_store(), "audio_retention_days"
-            ) or 0)
-        except Exception:
-            log.warning("retention_default_unavailable", exc_info=True)
-            return 0
         for assembly in candidates:
             days = _retention_days(assembly, default_days)
             if days <= 0 or assembly.closed_at + timedelta(days=days) > now:

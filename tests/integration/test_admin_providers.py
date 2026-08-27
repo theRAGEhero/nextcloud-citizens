@@ -35,35 +35,59 @@ def admin_client(client):
     return client, store
 
 
-def test_non_admin_is_refused_by_the_app_not_only_the_proxy(client, monkeypatch):
+class FakeNextcloud:
+    """Stands in for the client `nc_app` injects.
+
+    Deliberately exposes only `ocs`, mirroring the real OCS call and payload
+    shape. The previous version of this test invented a `users.get_details`
+    method that does not exist on nc_py_api, so the mock encoded the bug and
+    the check failed closed in production — every admin lost Settings.
+    """
+
+    def __init__(self, groups=(), error: Exception | None = None):
+        self._groups = list(groups)
+        self._error = error
+        self.calls: list[str] = []
+
+    def ocs(self, method, path, **_kwargs):
+        self.calls.append(f"{method} {path}")
+        if self._error is not None:
+            raise self._error
+        return {"id": "someone", "groups": self._groups, "displayname": "Someone"}
+
+
+def test_admin_check_uses_the_endpoint_an_exapp_is_allowed_to_call():
+    """Verified against the live server: nc.users.get_user() is 401 for an
+    ExApp, while OCS cloud/user returns the caller's own groups."""
+    from citizens.api import admin
+
+    nc = FakeNextcloud(groups=["admin", "users"])
+    assert admin.require_admin(nc, "someone") == "someone"
+    assert nc.calls == ["GET /ocs/v1.php/cloud/user"]
+
+
+def test_non_admin_is_refused_by_the_app_not_only_the_proxy():
     """The proxy restricts these paths to administrators, but that is one regex
     in info.xml. These endpoints read and write provider API keys, so the app
     checks too."""
     from citizens.api import admin
 
-    class _User:
-        groups = ["users"]
-
-    class _NC:
-        class users:
-            @staticmethod
-            def get_details(user_id):
-                return _User()
-
-    assert admin.require_admin.__doc__  # documented as defence in depth
     with pytest.raises(Exception) as excinfo:
-        admin.require_admin(_NC(), "someone")
+        admin.require_admin(FakeNextcloud(groups=["users"]), "someone")
     assert getattr(excinfo.value, "status_code", None) == 403
 
-    class _Broken:
-        class users:
-            @staticmethod
-            def get_details(user_id):
-                raise RuntimeError("Nextcloud unreachable")
+    # a user with no groups at all
+    with pytest.raises(Exception) as excinfo:
+        admin.require_admin(FakeNextcloud(), "someone")
+    assert getattr(excinfo.value, "status_code", None) == 403
+
+
+def test_admin_check_fails_closed_when_nextcloud_is_unreachable():
+    from citizens.api import admin
 
     with pytest.raises(Exception) as excinfo:
-        admin.require_admin(_Broken(), "someone")
-    assert getattr(excinfo.value, "status_code", None) == 503  # fails closed
+        admin.require_admin(FakeNextcloud(error=RuntimeError("unreachable")), "someone")
+    assert getattr(excinfo.value, "status_code", None) == 503
 
 
 def test_defaults(admin_client):

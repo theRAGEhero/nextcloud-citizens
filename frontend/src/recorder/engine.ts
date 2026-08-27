@@ -48,6 +48,8 @@ export interface EngineState {
 	storageError: boolean
 	lowStorage: boolean
 	uploadOnline: boolean
+	/** why the last upload failed, so the table is told the truth */
+	uploadFailure: '' | 'network' | 'server'
 	retryInMs: number
 	serverState: string
 	error: string
@@ -77,6 +79,7 @@ export class RecorderEngine {
 		storageError: false,
 		lowStorage: false,
 		uploadOnline: true,
+		uploadFailure: '',
 		retryInMs: 0,
 		serverState: '',
 		error: '',
@@ -293,6 +296,7 @@ export class RecorderEngine {
 					await idb.putChunk(chunk)
 					this.state.ackedChunks += 1
 					this.state.uploadOnline = true
+					this.state.uploadFailure = ''
 					this.state.retryInMs = 0
 					this.retryDelay = RETRY_BASE_MS
 					clientLog('info', 'chunk_acked', { seq: chunk.seq, attempts: chunk.attempts })
@@ -309,6 +313,11 @@ export class RecorderEngine {
 						return
 					}
 					this.state.uploadOnline = false
+					// a server fault is not the table's connection dropping —
+					// telling them "network unavailable" sends people to check
+					// the WiFi when nothing is wrong at their end
+					this.state.uploadFailure =
+						error instanceof RecorderApiError && error.status >= 500 ? 'server' : 'network'
 					chunk.attempts += 1
 					await idb.putChunk(chunk)
 					clientLog('warn', 'chunk_upload_failed', {

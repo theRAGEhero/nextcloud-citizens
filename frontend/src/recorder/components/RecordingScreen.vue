@@ -372,8 +372,14 @@ async function clearSynced(): Promise<void> {
 				Recording can no longer be safely stored. Please notify the facilitator immediately.
 			</div>
 			<div v-else-if="!state.uploadOnline" class="rc-note">
-				Network unavailable — the recording continues safely on this phone and will upload when
-				the connection returns. Keep this page open.
+				<template v-if="state.uploadFailure === 'server'">
+					The server is busy — the recording continues safely on this phone and will upload
+					by itself. Nothing is lost. Keep this page open.
+				</template>
+				<template v-else>
+					Network unavailable — the recording continues safely on this phone and will upload
+					when the connection returns. Keep this page open.
+				</template>
 				<button class="rc-btn" style="margin-top: 10px" @click="engine.retryNow()">Retry upload now</button>
 			</div>
 			<p v-else class="rc-muted rc-center" style="font-size: 13.5px">

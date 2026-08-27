@@ -187,14 +187,15 @@ def analyze_table(session: Session, store: provider_config.ConfigStore, recordin
         + "\n".join(lines)
     )
 
+    # release the DB write lock BEFORE reading provider config — _analysis_config
+    # and build_system_prompt are OCS calls to Nextcloud, and a held job
+    # transaction 500s every API request after busy_timeout
+    session.commit()
     base_url, key, model = _analysis_config(store)
     log.info("analysis_started", recording_id=recording.id, scope="table", segments=len(lines))
     system_prompt = build_system_prompt(
         TABLE_SYSTEM, language, store, assembly.analysis_instructions if assembly else ""
     )
-    # release the DB write lock for the (potentially minutes-long) model call —
-    # a held job transaction 500s every API request after busy_timeout
-    session.commit()
     result = chat_json(base_url, key, model, system_prompt, user_prompt, TableAnalysis)
     recording.analysis_summary = result.summary
 
@@ -279,13 +280,14 @@ def analyze_round(session: Session, store: provider_config.ConfigStore, round_: 
         + "\n".join(lines)
     )
 
+    # release the lock before the config reads as well as the model call
+    # (see analyze_table)
+    session.commit()
     base_url, key, model = _analysis_config(store)
     log.info("analysis_started", round_id=round_.id, scope="round", source_findings=len(lines))
     system_prompt = build_system_prompt(
         ROUND_SYSTEM, language, store, assembly.analysis_instructions if assembly else ""
     )
-    # release the DB write lock for the model call (see analyze_table)
-    session.commit()
     result = chat_json(base_url, key, model, system_prompt, user_prompt, RoundAnalysis)
     round_.analysis_summary = result.summary
 
