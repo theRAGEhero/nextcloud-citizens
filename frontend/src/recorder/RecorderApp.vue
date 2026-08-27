@@ -6,6 +6,7 @@ import { computed, onMounted, ref } from 'vue'
 import SvgIcon from '../components/ui/SvgIcon.vue'
 import { recorderApi, RecorderApiError, type JoinResult, type RoundInfo } from './api'
 import ArmedScreen from './components/ArmedScreen.vue'
+import ConsentScreen from './components/ConsentScreen.vue'
 import Preflight from './components/Preflight.vue'
 import RecordingScreen from './components/RecordingScreen.vue'
 import RecoverySync from './components/RecoverySync.vue'
@@ -15,7 +16,16 @@ import { initLogger } from './logger'
 
 const SESSION_KEY = 'citizens-recorder-session'
 
-type Screen = 'joining' | 'no-invite' | 'recovery' | 'preflight' | 'armed' | 'recording' | 'report' | 'error'
+type Screen =
+	| 'joining'
+	| 'no-invite'
+	| 'recovery'
+	| 'consent'
+	| 'preflight'
+	| 'armed'
+	| 'recording'
+	| 'report'
+	| 'error'
 
 const screen = ref<Screen>('joining')
 const error = ref('')
@@ -67,6 +77,32 @@ async function enterWithSession(joined: JoinResult): Promise<void> {
 		}
 	} catch {
 		/* recovery scan failure must not block a fresh session */
+	}
+	// people are about to be recorded: tell them what happens to the audio
+	// before it starts. Once per device — an interrupted round must not make
+	// the table read it again mid-assembly.
+	if (!consentGiven()) {
+		screen.value = 'consent'
+		return
+	}
+	screen.value = 'preflight'
+}
+
+const CONSENT_KEY = 'citizens-recorder-consent'
+
+function consentGiven(): boolean {
+	try {
+		return window.localStorage.getItem(CONSENT_KEY) === session.value?.assembly.id
+	} catch {
+		return false // private mode or blocked storage: show it again, never skip it
+	}
+}
+
+function acceptConsent(): void {
+	try {
+		if (session.value) window.localStorage.setItem(CONSENT_KEY, session.value.assembly.id)
+	} catch {
+		/* not being able to remember is fine; showing it twice is not a failure */
 	}
 	screen.value = 'preflight'
 }
@@ -164,6 +200,12 @@ function sessionStorageClear(): void {
 			:session="session"
 			:recording="recoveryRecording"
 			@done="recoveryRecording = null; screen = 'preflight'" />
+
+		<ConsentScreen
+			v-else-if="screen === 'consent' && session"
+			:handling="session.data_handling ?? null"
+			:table-number="session.table_number"
+			@accept="acceptConsent" />
 
 		<Preflight
 			v-else-if="screen === 'preflight' && session"

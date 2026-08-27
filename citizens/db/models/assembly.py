@@ -39,6 +39,10 @@ class Assembly(Base):
     closed_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     final_report_json: Mapped[str | None] = mapped_column(Text)
     final_report_at: Mapped[datetime | None] = mapped_column(TZDateTime())
+    # days of audio retention after closing, overriding the instance default;
+    # NULL = follow the default, 0 = keep indefinitely
+    audio_retention_days: Mapped[int | None] = mapped_column(Integer())
+    audio_purged_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow, onupdate=utcnow)
 
@@ -139,6 +143,9 @@ class RecorderInvite(Base):
     token_encrypted: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(TZDateTime())
+    # a QR code is a secret printed on a poster in a public room; NULL means an
+    # invite issued before expiry existed and is treated as never expiring
+    expires_at: Mapped[datetime | None] = mapped_column(TZDateTime())
     last_used_at: Mapped[datetime | None] = mapped_column(TZDateTime())
 
     assembly: Mapped[Assembly] = relationship(back_populates="invites")

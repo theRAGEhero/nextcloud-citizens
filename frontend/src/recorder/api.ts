@@ -28,10 +28,21 @@ export interface AssemblyInfo {
 	recording_mode: 'orchestrated' | 'independent'
 }
 
+/** What the table is told before recording — names and durations only. */
+export interface DataHandling {
+	stt_provider?: string
+	stt_configured?: boolean
+	stt_hosted?: boolean
+	analysis_enabled?: boolean
+	analysis_hosted?: boolean
+	audio_retention_days?: number
+}
+
 export interface JoinResult {
 	session_token: string
 	expires_at: string
 	assembly: AssemblyInfo
+	data_handling?: DataHandling
 	table_number: number
 	rounds: RoundInfo[]
 }
@@ -39,6 +50,7 @@ export interface JoinResult {
 export interface RecorderStatus {
 	assembly: AssemblyInfo
 	report_available?: boolean
+	data_handling?: DataHandling
 	table_number: number
 	rounds: RoundInfo[]
 }

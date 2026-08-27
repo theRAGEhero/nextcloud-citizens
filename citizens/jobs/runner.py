@@ -15,6 +15,7 @@ across those starves every API request into 500s after busy_timeout.
 
 import asyncio
 import json
+import time
 from datetime import timedelta
 
 from sqlalchemy import select
@@ -23,6 +24,7 @@ from citizens.db.models import AppJob
 from citizens.db.models.base import utcnow
 from citizens.db.session import session_scope
 from citizens.jobs.handlers import HANDLERS, PermanentJobError
+from citizens.jobs.sweep import SWEEP_INTERVAL_SECONDS, run_sweeps
 from citizens.logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -104,7 +106,14 @@ def _run_job(job_id: str) -> None:
 
 async def run_forever(stop_event: asyncio.Event) -> None:
     recover_stale_jobs()
+    last_sweep = 0.0
     while not stop_event.is_set():
+        # before claiming work, not after: a steady stream of jobs would
+        # otherwise `continue` past the sweep forever
+        now = time.monotonic()
+        if now - last_sweep >= SWEEP_INTERVAL_SECONDS:
+            last_sweep = now
+            await asyncio.to_thread(run_sweeps)
         try:
             job_id = await asyncio.to_thread(_claim_next_job)
             if job_id is not None:

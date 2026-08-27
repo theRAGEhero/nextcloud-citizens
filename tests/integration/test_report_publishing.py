@@ -82,7 +82,7 @@ PNG_1PX = base64.b64decode(
 
 
 def test_logo_roundtrip(client):
-    from citizens.api.admin import get_config_store
+    from citizens.api.admin import get_config_store, require_admin
 
     class MemoryStore:
         def __init__(self):
@@ -98,6 +98,9 @@ def test_logo_roundtrip(client):
             self.values.pop(key, None)
 
     client.app.dependency_overrides[get_config_store] = lambda: MemoryStore()
+    # the admin routes now verify group membership against Nextcloud too;
+    # tests/integration/test_admin_providers.py covers the real check
+    client.app.dependency_overrides[require_admin] = lambda: "tester"
 
     assert client.get("/api/v1/admin/logo").status_code == 404
     upload = client.put(

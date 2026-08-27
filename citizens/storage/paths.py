@@ -6,6 +6,7 @@ All Citizens data lives under APP_PERSISTENT_STORAGE (brief §3.3); the app
 never touches Nextcloud user files.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
 
 SUBDIRS = ("recordings", "assembled", "transcripts", "exports", "temp", "logs")
@@ -58,11 +59,20 @@ def device_log_path(root: Path, session_id: str) -> Path:
     return root / "logs" / "devices" / f"{session_id}.jsonl"
 
 
-def purge_assembly_storage(root: Path, assembly_id: str) -> None:
+def purge_assembly_storage(
+    root: Path, assembly_id: str, recorder_session_ids: Sequence[str] = ()
+) -> None:
     """Remove every stored file of a deleted assembly (audio chunks, assembled
-    canonical audio, transcripts, exports). assembly_id is a server-generated
-    UUID, never client input."""
+    canonical audio, transcripts, exports, and the phones' shipped diagnostic
+    logs). assembly_id is a server-generated UUID, never client input.
+
+    Device logs live under logs/devices/<session>.jsonl, outside the
+    per-assembly tree, so they need their ids passed in — they were previously
+    missed and survived deletion as orphaned files nothing could reach.
+    """
     import shutil
 
     for subdir in ("recordings", "assembled", "transcripts", "exports"):
         shutil.rmtree(root / subdir / assembly_id, ignore_errors=True)
+    for session_id in recorder_session_ids:
+        device_log_path(root, session_id).unlink(missing_ok=True)

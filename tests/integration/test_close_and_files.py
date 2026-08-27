@@ -288,3 +288,43 @@ def test_delete_all_transcripts_and_frozen_report_refresh(client, tmp_path):
     # the frozen copy participants read is re-snapshotted without the quotes
     after = client.get("/api/v1/public/recorder/report", headers=headers).json()
     assert after["rounds"][0]["tables"][0]["findings"][0]["evidence"] == []
+
+
+def test_audio_retention_purges_only_after_the_window(client, tmp_path, monkeypatch):
+    """Retention is audio-only and clocked from closing, so an assembly that
+    runs for weeks is never affected while it is still open."""
+    from datetime import timedelta
+
+    from citizens.db.models import Assembly, Recording
+    from citizens.db.models.base import utcnow
+    from citizens.db.session import session_scope
+    from citizens.jobs.sweep import sweep_expired_audio
+    from citizens.services import provider_config
+
+    class _Store:
+        def get_value(self, key):
+            return "7" if key == "audio_retention_days" else None
+
+        def set_value(self, key, value, sensitive=False):
+            pass
+
+        def delete_value(self, key):
+            pass
+
+    monkeypatch.setattr(provider_config, "default_store", lambda: _Store())
+
+    assembly = _assembly(client, "TEST Retention", tables=1)
+    headers, joined = _join(client, assembly, 0, "10.8.8.9")
+    recording_id = _record(client, headers, joined["rounds"][0]["id"], _audio(tmp_path))
+    client.post(f"/api/v1/assemblies/{assembly['id']}/close")
+
+    assert sweep_expired_audio() == 0  # closed just now, nothing is due
+
+    with session_scope() as session:
+        session.get(Assembly, assembly["id"]).closed_at = utcnow() - timedelta(days=8)
+
+    assert sweep_expired_audio() == 1
+    with session_scope() as session:
+        assert session.get(Assembly, assembly["id"]).audio_purged_at is not None
+        assert session.get(Recording, recording_id).audio_deleted_at is not None
+    assert sweep_expired_audio() == 0  # and never twice

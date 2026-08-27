@@ -1,42 +1,127 @@
 # Privacy & data handling
 
-Audio recordings and transcripts of assembly discussions are sensitive data.
-This document grows with the implementation; the rules below are binding from
-Milestone 0 on.
+Citizens records people's voices, which is sensitive personal data. This
+document describes **what the software actually does today**, so that an
+organisation deploying it can write its own privacy notice and processing
+record against something accurate.
 
-## Data locations
+Where a control does not exist yet, it says so. Nothing here is aspirational.
 
-- **Everything** Citizens stores lives under the ExApp's persistent storage
-  (`APP_PERSISTENT_STORAGE`, the `citizens_data` docker volume in dev).
-- Citizens never reads or writes Nextcloud user files (no Files integration in
-  V1 by design).
+## What is stored, and where
 
-## Standing rules (from the brief, §28, §43, §52)
+Everything Citizens stores lives under the ExApp's own persistent storage
+(`APP_PERSISTENT_STORAGE`, mounted at `/data`):
 
-- API keys are stored server-side only (sensitive Nextcloud AppConfig from
-  Milestone 4); they never reach a browser, a QR code, a REST response, or a
-  log line. UIs only ever see `configured: true` plus a short key hint.
-- Recorder QR tokens are long random secrets; only their SHA-256 hash is
-  stored server-side. Tokens are revocable and regenerable.
-- Logs never contain audio, transcript content, API keys, or bearer/QR
-  secrets. A redaction processor (`citizens/logging_setup.py`) scrubs
-  sensitive keys from every event as defense in depth.
-- Raw-audio retention is admin-configurable (delete after transcription /
-  7 days / 30 days / indefinite); deletion runs as a durable job and is
-  audit-logged (what, when, which assembly/recording, which policy) without
-  logging content.
-- Participants can be fully pseudonymous (`P001`…): names and emails are
-  optional everywhere. Diarization produces `SPEAKER_NN` labels only — no
-  voice biometrics, no automatic real-name attribution.
-- Before recording starts, the recorder shows a consent/information screen
-  naming the STT provider and the configured retention period.
-- AI findings are drafts until a human approves them; the original AI text is
-  preserved for audit alongside any human edit.
+| Data | Location | Notes |
+|---|---|---|
+| Audio recordings | `assembled/` | one file per table per round |
+| Upload chunks | `recordings/` | **deleted automatically** once the assembled file is verified; `manifest.json` keeps each chunk's checksum as the audit trail |
+| Transcripts | `transcripts/` + database | segments and words, with speaker labels |
+| Findings and reports | database | AI drafts plus human review decisions |
+| Device diagnostics | `logs/devices/` | phone-side event log, capped at 5 MB per session |
+| Application log | `logs/citizens.jsonl` | rotated, 10 MB × 5 |
 
-## Threat notes
+Citizens never reads or writes Nextcloud user files.
 
-- Public recorder endpoints (Milestone 2) are token-scoped (assembly + table +
-  rounds), rate-limited, and never grant organizer/admin capability.
-- Path traversal: all storage paths are built from server-generated UUIDs,
-  never from client-supplied names.
-- Upload integrity: every chunk is SHA-256-verified before acknowledgment.
+## What leaves the server
+
+**Nothing, until an administrator configures a provider.** A fresh install
+performs no transcription and no analysis.
+
+* **Speech to text.** Deepgram and Mistral are hosted services: with those, the
+  assembled audio of each recording is sent to the provider once. **Whisper**
+  works against any OpenAI-compatible endpoint, including one you run yourself,
+  and **Vosk** runs entirely offline — with either, audio never leaves your
+  infrastructure.
+* **Analysis.** Only the *transcript text* is sent, never audio. Any
+  OpenAI-compatible endpoint works, so this can also run on your own hardware.
+* **Live captions** use the same engine as transcription and are shown on the
+  recording phone only. They are never stored.
+
+The recorder tells each table which of these applies **before recording
+starts** — see "Consent" below.
+
+## Retention
+
+* Raw audio retention is configurable in Settings as a number of days after an
+  assembly is **closed**. `0` means keep indefinitely, which is the default.
+  Individual assemblies can override the instance default.
+* Deletion runs from a periodic sweep, is audit-logged (assembly, policy,
+  number of recordings, bytes freed), and never logs content.
+* **Audio only.** Transcripts, findings and reports are the record of the
+  assembly and are not touched by retention. Delete them explicitly from the
+  Files tab of the assembly if you need to.
+* Organisers can delete audio and transcripts at any time from the Files tab,
+  and deleting an assembly deletes its audio, transcripts and exports with it.
+* **Not implemented:** there is no automatic deletion of transcripts or
+  findings, and no data-subject-request tooling. Both are manual today.
+
+## Consent
+
+Before a table can record, the recorder shows an information screen naming the
+transcription engine, whether that engine is an outside service, how long audio
+is kept, and that speakers are labelled only as "Speaker 1", "Speaker 2". The
+table confirms before recording becomes available. The text is generated from
+the server's live configuration, so it cannot drift from what the app does.
+
+This is an *information and confirmation* step at the table. It is **not** a
+per-individual consent record: Citizens does not store who agreed. If your
+lawful basis requires individual consent records, collect them separately.
+
+## Identifiability
+
+* Participants can be fully pseudonymous (`P001`…). Names and emails are
+  optional everywhere.
+* Diarization produces `SPEAKER_NN` labels only. There is no voice biometric
+  identification and no automatic real-name attribution.
+* Audio itself is inherently identifiable — a voice is personal data even
+  without a name attached. Retention and access control matter accordingly.
+
+## Secrets
+
+* Provider API keys are stored in Nextcloud's *sensitive* AppConfig and are
+  never returned by any API, never written to a QR code, and never logged. UIs
+  see only `configured: true` and the last four characters.
+* Testing a provider connection against a typed-in endpoint requires a
+  typed-in key, so a saved key cannot be sent to an arbitrary host.
+* Recorder QR tokens are 256-bit random secrets. Only their SHA-256 hash is
+  used for verification; a reversible copy is encrypted with the app secret so
+  organisers can reprint sheets.
+* A redaction processor scrubs anything matching
+  `secret|token|passw|api_key|authorization|bearer|credential|cookie` from
+  every log event on every sink, as defence in depth.
+
+## Access control
+
+* Organiser data is scoped to the Nextcloud user who created the assembly.
+  Requests for someone else's assembly return 404, not 403, so the API is not
+  an existence oracle.
+* Table phones authenticate with a bearer token scoped to one assembly and one
+  table, valid for 16 hours. A phone cannot read or write another table's
+  recording.
+* QR invites expire 30 days after they are generated. Revoking invites also
+  disconnects devices that already joined.
+* Administrator settings require Nextcloud administrator group membership,
+  checked both by the AppAPI proxy and by the app itself.
+
+## Threats we do not fully mitigate
+
+Stated plainly, because an organisation deploying this should know:
+
+* **A QR code is a secret printed on a poster in a public room.** Anyone who
+  photographs it can join that table until the invite is revoked or expires,
+  and could occupy the table's recording slot or contribute audio. Keep sheets
+  with the facilitator and revoke after the event.
+* **An administrator can point transcription at any endpoint**, including one
+  that is not the provider participants were told about. This is an
+  administrative trust boundary, not a technical one.
+* **The recording device is a phone in a room.** Citizens cannot know whether
+  everyone present was actually informed.
+
+## Deleting everything for one assembly
+
+Deleting an assembly from the organiser UI removes its recordings, transcripts,
+findings, reports, exports and the phones' diagnostic logs, and purges its
+storage directory. Entries already written to the rotating application log
+(`logs/citizens.jsonl`) are not rewritten; they contain event names, ids and
+timings, never audio or transcript text.

@@ -1,7 +1,14 @@
 <!-- SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
      SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
-import { mdiBrain, mdiCheck, mdiClose, mdiImageOutline, mdiMicrophoneOutline } from '@mdi/js'
+import {
+	mdiBrain,
+	mdiCheck,
+	mdiClose,
+	mdiDeleteClockOutline,
+	mdiImageOutline,
+	mdiMicrophoneOutline,
+} from '@mdi/js'
 import { onMounted, ref } from 'vue'
 import { api, BASE } from '../api'
 import type { ProvidersSummary, SttProvider } from '../types'
@@ -43,6 +50,7 @@ const analysisKey = ref('')
 const analysisEnabled = ref(true)
 const analysisExtra = ref('')
 const orgName = ref('')
+const retentionDays = ref(0)
 const showPrompts = ref(false)
 const logoSet = ref(false)
 const logoVersion = ref(0)
@@ -110,6 +118,7 @@ async function reload(): Promise<void> {
 	analysisEnabled.value = summary.value.analysis.enabled
 	analysisExtra.value = summary.value.analysis.extra_instructions
 	orgName.value = summary.value.organization_name
+	retentionDays.value = summary.value.audio_retention_days ?? 0
 	logoSet.value = summary.value.logo_set
 }
 
@@ -143,6 +152,7 @@ async function save(): Promise<void> {
 			analysis_enabled: analysisEnabled.value,
 			analysis_extra_instructions: analysisExtra.value.trim(),
 			organization_name: orgName.value.trim(),
+			audio_retention_days: Number(retentionDays.value) || 0,
 		}
 		if (mistralKey.value) payload.mistral_api_key = mistralKey.value
 		if (deepgramKey.value) payload.deepgram_api_key = deepgramKey.value
@@ -464,6 +474,31 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 					<pre class="cz-promptbox">{{ summary.analysis.default_prompts.table }}</pre>
 					<p class="cz-muted" style="font-size: 12px; margin: 10px 0 4px">ROUND AGGREGATION (read-only)</p>
 					<pre class="cz-promptbox">{{ summary.analysis.default_prompts.round }}</pre>
+				</div>
+			</div>
+
+			<div class="cz-card">
+				<div class="cz-row" style="margin-bottom: 4px">
+					<SvgIcon :path="mdiDeleteClockOutline" :size="22" style="color: var(--cz-primary)" />
+					<h3>Audio retention</h3>
+				</div>
+				<p class="cz-muted" style="font-size: 13.5px; margin-bottom: 14px">
+					Delete the raw audio of an assembly this many days after it is
+					<strong>closed</strong>. Transcripts, findings and reports are never
+					removed by this — only the recordings. Individual assemblies can
+					override it, and organizers can always delete audio sooner from the
+					Files tab.
+				</p>
+				<div class="cz-field" style="max-width: 260px">
+					<label>Days to keep audio after closing</label>
+					<input v-model.number="retentionDays" type="number" min="0" max="3650" />
+					<p class="cz-muted" style="font-size: 12.5px; margin-top: 6px">
+						{{
+							Number(retentionDays) > 0
+								? `Audio is deleted ${retentionDays} days after an assembly is closed. Table phones are told this before recording.`
+								: 'Audio is kept until someone deletes it. Table phones are told this before recording.'
+						}}
+					</p>
 				</div>
 			</div>
 

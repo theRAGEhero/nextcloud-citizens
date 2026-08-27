@@ -4,8 +4,11 @@
 
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "CREATED": {"RECORDING"},
-    "RECORDING": {"FINALIZING"},
-    "FINALIZING": {"WAITING_FOR_CHUNKS", "ASSEMBLING"},
+    # → UPLOAD_INCOMPLETE: a phone can die at any point, and leaving the
+    # recording in a "healthy pending" state blocks the round's analysis and
+    # stops the table re-recording. Giving up is reversible (see below).
+    "RECORDING": {"FINALIZING", "UPLOAD_INCOMPLETE"},
+    "FINALIZING": {"WAITING_FOR_CHUNKS", "ASSEMBLING", "UPLOAD_INCOMPLETE"},
     "WAITING_FOR_CHUNKS": {"ASSEMBLING", "UPLOAD_INCOMPLETE"},
     "ASSEMBLING": {"AUDIO_READY", "AUDIO_INVALID", "WAITING_FOR_CHUNKS"},
     "AUDIO_READY": {"TRANSCRIBING"},

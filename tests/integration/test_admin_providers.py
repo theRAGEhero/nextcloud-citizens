@@ -4,7 +4,7 @@
 
 import pytest
 
-from citizens.api.admin import get_config_store
+from citizens.api.admin import get_config_store, require_admin
 from citizens.services import provider_config
 
 
@@ -29,7 +29,41 @@ class MemoryStore:
 def admin_client(client):
     store = MemoryStore()
     client.app.dependency_overrides[get_config_store] = lambda: store
+    # the real check asks Nextcloud for group membership; see
+    # test_non_admin_is_refused for the negative case
+    client.app.dependency_overrides[require_admin] = lambda: "tester"
     return client, store
+
+
+def test_non_admin_is_refused_by_the_app_not_only_the_proxy(client, monkeypatch):
+    """The proxy restricts these paths to administrators, but that is one regex
+    in info.xml. These endpoints read and write provider API keys, so the app
+    checks too."""
+    from citizens.api import admin
+
+    class _User:
+        groups = ["users"]
+
+    class _NC:
+        class users:
+            @staticmethod
+            def get_details(user_id):
+                return _User()
+
+    assert admin.require_admin.__doc__  # documented as defence in depth
+    with pytest.raises(Exception) as excinfo:
+        admin.require_admin(_NC(), "someone")
+    assert getattr(excinfo.value, "status_code", None) == 403
+
+    class _Broken:
+        class users:
+            @staticmethod
+            def get_details(user_id):
+                raise RuntimeError("Nextcloud unreachable")
+
+    with pytest.raises(Exception) as excinfo:
+        admin.require_admin(_Broken(), "someone")
+    assert getattr(excinfo.value, "status_code", None) == 503  # fails closed
 
 
 def test_defaults(admin_client):
@@ -160,3 +194,40 @@ def test_update_is_audited_without_values(admin_client):
     assert events, "providers_updated audit event missing"
     assert "mistral_api_key" in events[-1].data_json
     assert "mk-super-secret-999" not in events[-1].data_json
+
+
+def test_participant_notice_follows_the_endpoint_not_the_engine_name(admin_client):
+    """Whisper and Vosk are self-hosted in the usual case, but nothing stops an
+    admin pointing them at a public server — and the table must not be told
+    "stays on our server" when it does not."""
+    _, store = admin_client
+
+    store.set_value("stt_provider", "whisper")
+    for local in (
+        "http://speaches:8000/v1",            # container name on the docker network
+        "http://192.168.1.50:8000/v1",        # LAN address
+        "http://localhost:8000/v1",
+        "http://whisper.internal:8000/v1",    # private-use suffix
+    ):
+        store.set_value("whisper_base_url", local)
+        assert provider_config.stt_is_hosted(store, "whisper") is False, local
+
+    store.set_value("whisper_base_url", "https://api.openai.com/v1")
+    assert provider_config.stt_is_hosted(store, "whisper") is True
+
+    # hosted services are always hosted, whatever else is configured
+    assert provider_config.stt_is_hosted(store, "deepgram") is True
+
+
+def test_endpoints_must_be_real_urls(admin_client):
+    client, _ = admin_client
+    rejected = client.put(
+        "/api/v1/admin/providers", json={"whisper_base_url": "file:///etc/passwd"}
+    )
+    assert rejected.status_code == 422
+    assert client.put(
+        "/api/v1/admin/providers", json={"vosk_url": "https://not-a-websocket.example"}
+    ).status_code == 422
+    assert client.put(
+        "/api/v1/admin/providers", json={"vosk_url": "ws://vosk.internal:2700"}
+    ).status_code == 200

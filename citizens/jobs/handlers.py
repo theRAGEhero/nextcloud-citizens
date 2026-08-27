@@ -14,7 +14,7 @@ from citizens.providers.transcription.base import TranscriptionError
 from citizens.services import analysis as analysis_svc
 from citizens.services import provider_config
 from citizens.services import transcription as transcription_svc
-from citizens.services.audio import AudioAssemblyError, assemble_recording
+from citizens.services.audio import AudioAssemblyError, StorageFullError, assemble_recording
 from citizens.services.jobs import enqueue_job
 from citizens.services.recording_states import transition
 
@@ -52,6 +52,11 @@ def handle_assemble_audio(session: Session, payload: dict) -> None:
         transition(recording, "ASSEMBLING")
     try:
         assemble_recording(session, recording)
+    except StorageFullError:
+        recording.error_code = "STORAGE_FULL"
+        _commit_failure_state(session)
+        log.error("audio_assembly_deferred_no_space", recording_id=recording.id)
+        raise  # retryable: the chunks are safe and space may be freed
     except AudioAssemblyError as exc:
         recording.error_code = exc.code
         transition(recording, "AUDIO_INVALID")
@@ -133,10 +138,10 @@ def handle_analyze_table(session: Session, payload: dict) -> None:
         raise
     recording.error_code = ""
     transition(recording, "READY_FOR_REVIEW")
-    _maybe_enqueue_round_analysis(session, recording)
+    maybe_enqueue_round_analysis(session, recording)
 
 
-def _maybe_enqueue_round_analysis(session: Session, recording: Recording) -> None:
+def maybe_enqueue_round_analysis(session: Session, recording: Recording) -> None:
     """When the last analyzed table of the round is done, cluster cross-table."""
     states = [
         row

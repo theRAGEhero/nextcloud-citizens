@@ -48,9 +48,87 @@ def live_stt_snapshot() -> dict:
 
 
 def invalidate_snapshot() -> None:
-    global _live_snapshot, _analysis_enabled_cache
+    global _live_snapshot, _analysis_enabled_cache, _data_handling_cache
     _live_snapshot = None
     _analysis_enabled_cache = None
+    _data_handling_cache = None
+
+
+# engines that send audio to somebody else's servers; the others are endpoints
+# the operator runs, so audio never leaves their infrastructure
+HOSTED_STT = {"deepgram", "mistral"}
+
+_data_handling_cache: tuple[float, dict] | None = None
+
+
+def data_handling_summary() -> dict:
+    """What a participant is told before recording starts: which engine hears
+    the audio, whether that engine is somebody else's service, and how long the
+    recording is kept. Names and durations only — never keys or endpoints."""
+    global _data_handling_cache
+    now = time.monotonic()
+    if _data_handling_cache is not None and now - _data_handling_cache[0] < _LIVE_SNAPSHOT_TTL:
+        return _data_handling_cache[1]
+    try:
+        store = default_store()
+        provider = get_setting(store, "stt_provider")
+        analysis_on = get_setting(store, "analysis_enabled") == "1"
+        base_url = get_setting(store, "analysis_base_url")
+        summary = {
+            "stt_provider": provider,
+            "stt_configured": bool(store.get_value(f"{provider}_api_key"))
+            or provider in ("vosk", "whisper"),
+            "stt_hosted": stt_is_hosted(store, provider),
+            "analysis_enabled": analysis_on,
+            # a self-hosted analysis endpoint keeps transcripts on-premises
+            "analysis_hosted": analysis_on and not _is_local_endpoint(base_url),
+            "audio_retention_days": int(get_setting(store, "audio_retention_days") or 0),
+        }
+    except Exception:
+        log.warning("data_handling_summary_failed", exc_info=True)
+        # say nothing rather than something reassuring and wrong
+        summary = {}
+    _data_handling_cache = (now, summary)
+    return summary
+
+
+def stt_is_hosted(store: "ConfigStore", provider: str) -> bool:
+    """Does the audio leave this organisation's infrastructure?
+
+    Derived from the configured *endpoint*, not the engine name: Whisper and
+    Vosk are self-hosted in the usual case, but nothing stops an admin pointing
+    them at a public server — and the participant-facing notice must not claim
+    "stays on our server" when it does not.
+    """
+    if provider in HOSTED_STT:
+        return True
+    endpoint_key = LIVE_ENDPOINT_KEYS.get(provider, "")
+    if not endpoint_key:
+        return True  # unknown engine: assume the answer people should hear
+    return not _is_local_endpoint(get_setting(store, endpoint_key))
+
+
+def _is_local_endpoint(url: str) -> bool:
+    """True for addresses that cannot leave the operator's own network."""
+    import ipaddress
+    from urllib.parse import urlparse
+
+    host = (urlparse(url).hostname or "").lower()
+    if not host:
+        return False
+    # private-use suffixes; anything else that resolves privately cannot be
+    # detected without DNS, and guessing "local" wrongly would tell a table
+    # their audio stays in-house when it does not — so we err the other way
+    if host == "localhost" or host.endswith((".local", ".internal", ".home.arpa")):
+        return True
+    # a bare name with no dots is a container/LAN hostname, not a public site
+    if "." not in host and ":" not in host:
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_private or address.is_loopback or address.is_link_local
 
 
 _analysis_enabled_cache: tuple[float, bool] | None = None
@@ -118,6 +196,10 @@ DEFAULTS = {
     "analysis_extra_instructions": "",
     # shown with the logo on PDF report headers/footers
     "organization_name": "",
+    # days to keep raw audio after an assembly is CLOSED; 0 keeps it
+    # indefinitely. Transcripts, findings and reports are never affected — only
+    # the recordings. Individual assemblies can override this.
+    "audio_retention_days": "0",
 }
 
 # reads of the new split keys fall back to the pre-split stored values
@@ -193,6 +275,7 @@ def key_hint(store: ConfigStore, key: str) -> str:
 def providers_summary(store: ConfigStore) -> dict:
     return {
         "organization_name": get_setting(store, "organization_name"),
+        "audio_retention_days": int(get_setting(store, "audio_retention_days") or 0),
         "stt": {
             "provider": get_setting(store, "stt_provider"),
             "live_enabled": get_setting(store, "stt_live_enabled") == "1",

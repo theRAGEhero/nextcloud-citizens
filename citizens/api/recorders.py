@@ -5,18 +5,20 @@
 from collections import deque
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from citizens.config import get_settings
-from citizens.db.models import RecorderSession
+from citizens.db.models import RecorderSession, Recording
 from citizens.db.session import get_db
 from citizens.domain import schemas
+from citizens.jobs.handlers import maybe_enqueue_round_analysis
 from citizens.security.identity import CurrentUser
 from citizens.services import invites as invite_svc
 from citizens.services.assemblies import get_owned_assembly
 from citizens.services.audit import record_audit_event
+from citizens.services.recording_states import transition
 from citizens.storage.paths import device_log_path
 
 router = APIRouter()
@@ -28,6 +30,35 @@ DB = Annotated[Session, Depends(get_db)]
 def list_invites(assembly_id: str, user: CurrentUser, session: DB):
     get_owned_assembly(session, assembly_id, user)
     return invite_svc.list_invites(session, assembly_id)
+
+
+@router.post("/recordings/{recording_id}/abandon-upload")
+def abandon_upload(recording_id: str, user: CurrentUser, session: DB):
+    """Stop waiting for a table whose phone never finished uploading.
+
+    A stalled upload is swept automatically after a while, but during a live
+    event the organizer needs to move the round on now rather than wait. The
+    audio already received is kept, and the table can still re-record or the
+    phone can still finish uploading later — UPLOAD_INCOMPLETE transitions back.
+    """
+    recording = session.get(Recording, recording_id)
+    if recording is None:
+        raise HTTPException(status_code=404, detail="Recording not found")
+    get_owned_assembly(session, recording.assembly_id, user)
+    if recording.state not in ("WAITING_FOR_CHUNKS", "RECORDING", "FINALIZING"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Recording is {recording.state}; only a stalled upload can be abandoned",
+        )
+    recording.error_code = "UPLOAD_ABANDONED"
+    transition(recording, "UPLOAD_INCOMPLETE")
+    session.flush()
+    maybe_enqueue_round_analysis(session, recording)
+    record_audit_event(
+        session, "upload_abandoned", "recording", recording.id, actor=user,
+        data={"received_chunks": recording.received_chunks, "total_chunks": recording.total_chunks},
+    )
+    return {"state": recording.state}
 
 
 @router.get(

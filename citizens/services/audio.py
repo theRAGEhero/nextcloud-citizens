@@ -19,6 +19,7 @@ from citizens.logging_setup import get_logger
 from citizens.services.recording import missing_sequences
 from citizens.services.recording_states import transition
 from citizens.storage.paths import assembled_dir, recording_dir, temp_dir
+from citizens.storage.space import has_room_for
 
 log = get_logger(__name__)
 
@@ -33,6 +34,11 @@ class AudioAssemblyError(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
+
+
+class StorageFullError(Exception):
+    """Not enough disk to assemble safely. Retryable — the audio is fine and
+    the operator may free space, so this must never mark it AUDIO_INVALID."""
 
 
 def _extension_for(mime_type: str) -> str:
@@ -58,6 +64,16 @@ def assemble_recording(session: Session, recording: Recording) -> None:
     canonical.parent.mkdir(parents=True, exist_ok=True)
 
     chunks = sorted(recording.chunks, key=lambda c: c.sequence_number)
+    # assembly writes a full raw concat plus the remuxed copy, so it needs
+    # roughly twice the recording free before it starts
+    needed = sum(chunk.size_bytes for chunk in chunks) * 2
+    if not has_room_for(root, needed):
+        # deliberately NOT an AudioAssemblyError: that marks the recording
+        # AUDIO_INVALID for good, and there is nothing wrong with this audio.
+        # Space may be freed, so let the job back off and try again.
+        raise StorageFullError(
+            "Not enough free storage to assemble this recording — the uploaded chunks are kept"
+        )
     # release the DB write lock before file/ffmpeg work: the job session
     # otherwise holds SQLite's single writer slot for the whole assembly,
     # 500-ing every API request after busy_timeout (expire_on_commit=False
@@ -96,6 +112,40 @@ def assemble_recording(session: Session, recording: Recording) -> None:
         size_bytes=canonical.stat().st_size,
     )
     _write_manifest(directory, recording, chunks)
+    _discard_chunks(session, root, directory, recording, chunks)
+
+
+def _discard_chunks(session: Session, root, directory, recording: Recording, chunks) -> None:
+    """Drop the per-chunk copies now that the canonical file is verified.
+
+    Chunks are the upload transport, not a second archive, but nothing ever
+    collected them — so every recording sat on disk twice, permanently
+    (measured on a test instance: 37 MB of chunks against 35 MB of assembled
+    audio). manifest.json keeps each chunk's sequence, checksum and size, so
+    the audit trail survives the bytes.
+
+    Safe here specifically: ffprobe has validated the remuxed file, its
+    checksum is stored, and no state transitions back into ASSEMBLING once a
+    recording is AUDIO_READY.
+    """
+    removed, freed = [], 0
+    for chunk in chunks:
+        try:
+            (root / chunk.path).unlink(missing_ok=True)
+        except OSError:
+            log.warning("chunk_cleanup_failed", recording_id=recording.id, exc_info=True)
+            continue  # leave the row while the bytes are still on disk
+        removed.append(chunk)
+        freed += chunk.size_bytes
+    for chunk in removed:
+        session.delete(chunk)
+    chunks_dir = directory / "chunks"
+    if chunks_dir.is_dir():
+        try:
+            chunks_dir.rmdir()  # keep manifest.json beside it
+        except OSError:
+            pass
+    log.info("chunks_reclaimed", recording_id=recording.id, chunks=len(removed), freed_bytes=freed)
 
 
 def _write_manifest(directory, recording: Recording, chunks) -> None:

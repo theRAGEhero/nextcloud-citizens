@@ -2,16 +2,27 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Recorder invites: per assembly+table QR tokens (brief §13–§14)."""
 
+from datetime import timedelta
+
 import segno
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from citizens.config import get_settings
-from citizens.db.models import Assembly, RecorderInvite
+from citizens.db.models import Assembly, RecorderInvite, RecorderSession
 from citizens.db.models.base import utcnow
 from citizens.domain import schemas
+from citizens.logging_setup import get_logger
 from citizens.security.invite_vault import decrypt_token, encrypt_token
 from citizens.security.recorder_tokens import generate_token, hash_token
+
+log = get_logger(__name__)
+
+# How long a printed QR code stays valid. Long enough for an independent-mode
+# assembly whose tables record days apart, and for participants to come back to
+# a published report; short enough that a photographed poster does not join an
+# assembly months later. Regenerating the sheets resets the clock.
+INVITE_LIFETIME_DAYS = 30
 
 
 def recorder_join_url(token: str) -> str:
@@ -58,6 +69,7 @@ def generate_invites(session: Session, assembly: Assembly) -> list[schemas.Invit
                 table_number=number,
                 token_hash=hash_token(token),
                 token_encrypted=encrypt_token(token),
+                expires_at=now + timedelta(days=INVITE_LIFETIME_DAYS),
             )
         )
         generated.append(_invite_card(number, token))
@@ -105,11 +117,35 @@ def list_invites(session: Session, assembly_id: str) -> list[schemas.InviteOut]:
 
 
 def revoke_invites(session: Session, assembly_id: str) -> int:
-    """Revoke all active invites without creating new ones."""
+    """Revoke all active invites AND disconnect the devices already using them.
+
+    Revoking the invite alone left every phone that had already joined with a
+    working bearer for the rest of its 16-hour lifetime: someone who
+    photographed a table's QR poster kept uploading audio and reading the
+    report long after the organizer believed they had been removed.
+
+    Regenerating QR sheets deliberately does not do this (see generate_invites)
+    — new codes should not knock live tables off mid-round.
+    """
     now = utcnow()
     active = _active_invites(session, assembly_id)
     for invite in active:
         invite.revoked_at = now
+    if active:
+        live = session.execute(
+            select(RecorderSession).where(
+                RecorderSession.invite_id.in_([invite.id for invite in active]),
+                RecorderSession.revoked_at.is_(None),
+            )
+        ).scalars()
+        disconnected = 0
+        for recorder_session in live:
+            recorder_session.revoked_at = now
+            disconnected += 1
+        log.info(
+            "invites_revoked",
+            assembly_id=assembly_id, invites=len(active), devices_disconnected=disconnected,
+        )
     session.flush()
     return len(active)
 
@@ -119,6 +155,10 @@ def find_active_by_token(session: Session, token: str) -> RecorderInvite | None:
         select(RecorderInvite).where(RecorderInvite.token_hash == hash_token(token))
     ).scalar_one_or_none()
     if invite is None or invite.revoked_at is not None:
+        return None
+    if invite.expires_at is not None and invite.expires_at < utcnow():
+        log.info("invite_expired", assembly_id=invite.assembly_id,
+                 table_number=invite.table_number)
         return None
     return invite
 

@@ -4,6 +4,44 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Integrity, retention and consent — 2026-08-27 (v0.6.0-beta.6)
+
+Second of four rounds of production-readiness work.
+
+- **One dead phone no longer wedges a whole round.** A table whose phone died
+  mid-upload left its recording waiting for chunks that were never coming, and
+  the round's cross-table analysis waited with it — indefinitely, with no
+  action that could resolve it. Stalled uploads are now given up on
+  automatically, and an organizer can stop waiting immediately from the Live
+  tab. The audio already received is kept and the table can re-record.
+- **Storage no longer grows without limit.** Upload chunks were kept forever
+  alongside the assembled recording, so every assembly occupied twice the disk
+  it needed. They are now reclaimed once the assembled audio is verified, with
+  each chunk's checksum retained as the audit trail.
+- **Audio retention.** Settings now has a retention period in days, counted
+  from when an assembly is closed, with a per-assembly override. It deletes
+  **audio only** — transcripts, findings and reports are the record of the
+  assembly and are never touched. Deletion is audit-logged.
+- **The server refuses writes when the disk is nearly full** instead of failing
+  halfway through one. Phones keep their audio and keep retrying, as they do
+  for any other outage.
+- **Tables are told what happens to the recording, before it starts.** A new
+  screen names the transcription engine, says whether it is an outside service
+  or the organisation's own server, states how long audio is kept, and explains
+  that speakers are labelled only "Speaker 1", "Speaker 2". The text is
+  generated from the live configuration, so it cannot drift from the truth.
+- **`docs/privacy.md` now describes what the software actually does.** It had
+  claimed configurable retention and a consent screen that did not exist. Both
+  exist as of this release; the remaining gaps are stated plainly rather than
+  implied away.
+- **Security:** administrator settings now verify administrator group
+  membership in the app, not only at the proxy; revoking invites disconnects
+  devices that already joined, instead of leaving them working for up to 16
+  hours; QR invites expire after 30 days; and provider endpoints must be real
+  http/ws URLs.
+- Deleting an assembly now also deletes the phones' diagnostic logs, which
+  previously survived as orphaned files.
+
 ### Surviving a real assembly — 2026-08-27 (v0.6.0-beta.5)
 
 First of four planned rounds of production-readiness work. Everything here is a

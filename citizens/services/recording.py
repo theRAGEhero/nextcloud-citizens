@@ -20,6 +20,7 @@ from citizens.services import provider_config
 from citizens.services.jobs import enqueue_job
 from citizens.services.recording_states import transition
 from citizens.storage.paths import chunk_path, recording_dir
+from citizens.storage.space import require_room
 
 log = get_logger(__name__)
 
@@ -218,7 +219,12 @@ def receive_chunk(
     data: bytes,
 ) -> dict:
     """Store one chunk. Idempotent on (recording, sequence, sha256)."""
-    if recording.state not in ("RECORDING", "FINALIZING", "WAITING_FOR_CHUNKS"):
+    if recording.state == "UPLOAD_INCOMPLETE":
+        # we had given up on this table, and the phone came back — the whole
+        # point of giving up being reversible
+        transition(recording, "WAITING_FOR_CHUNKS")
+        log.info("upload_resumed", recording_id=recording.id)
+    elif recording.state not in ("RECORDING", "FINALIZING", "WAITING_FOR_CHUNKS"):
         raise HTTPException(status_code=409, detail=f"Recording is {recording.state}")
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty chunk")
@@ -242,6 +248,7 @@ def receive_chunk(
         raise HTTPException(status_code=409, detail="Sequence already stored with different content")
 
     root = get_settings().app_persistent_storage
+    require_room(root, len(data), context="chunk_upload")
     directory = recording_dir(
         root, recording.assembly_id, recording.round_id, recording.table_id, recording.id
     )
@@ -284,6 +291,8 @@ def missing_sequences(session: Session, recording: Recording) -> list[int]:
 def complete_recording(session: Session, recording: Recording, total_chunks: int) -> dict:
     if recording.state == "RECORDING":
         transition(recording, "FINALIZING")
+    elif recording.state == "UPLOAD_INCOMPLETE":
+        transition(recording, "WAITING_FOR_CHUNKS")  # the phone came back
     elif recording.state not in ("FINALIZING", "WAITING_FOR_CHUNKS"):
         raise HTTPException(status_code=409, detail=f"Recording is {recording.state}")
 

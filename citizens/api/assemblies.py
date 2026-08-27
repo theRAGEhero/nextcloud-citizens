@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from citizens.config import get_settings
-from citizens.db.models import Assembly, Participant
+from citizens.db.models import Assembly, Participant, RecorderSession
 from citizens.db.session import get_db
 from citizens.domain import schemas
 from citizens.security.identity import CurrentUser
@@ -65,11 +65,21 @@ def delete_assembly(assembly_id: str, user: CurrentUser, session: DB):
     assembly = svc.get_owned_assembly(session, assembly_id, user)
     record_audit_event(session, "assembly_deleted", "assembly", assembly.id, actor=user,
                        data={"name": assembly.name})
+    # collected before the cascade removes the rows: the phones' diagnostic
+    # logs are keyed by session id and live outside the per-assembly tree
+    device_sessions = [
+        row
+        for row in session.execute(
+            select(RecorderSession.id).where(RecorderSession.assembly_id == assembly_id)
+        ).scalars()
+    ]
     session.delete(assembly)
     session.flush()
     # deleting the session deletes its audio too — chunks, canonical files,
-    # transcripts and exports all leave the disk with the database rows
-    purge_assembly_storage(get_settings().app_persistent_storage, assembly_id)
+    # transcripts, exports and device logs all leave the disk with the rows
+    purge_assembly_storage(
+        get_settings().app_persistent_storage, assembly_id, device_sessions
+    )
 
 
 @router.post("/assemblies/{assembly_id}/rounds", response_model=schemas.RoundOut, status_code=201)

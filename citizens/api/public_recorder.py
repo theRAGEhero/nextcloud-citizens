@@ -26,7 +26,7 @@ from citizens.security.rate_limit import (
 )
 from citizens.services import recording as rec_svc
 from citizens.services.live_captions import LIVE_CAPTIONS
-from citizens.services.provider_config import live_stt_snapshot
+from citizens.services.provider_config import data_handling_summary, live_stt_snapshot
 from citizens.services.recording import RERECORDABLE_STATES
 from citizens.storage.paths import device_log_path
 
@@ -257,6 +257,16 @@ def _assembly_state(session: Session, recorder_session: RecorderSession) -> dict
         },
         # phones learn about report availability through the status poll
         "report_available": _report_available(session, assembly),
+        # what the table is told before recording starts (brief §43): engine
+        # name, whether it is a hosted service, and how long audio is kept
+        "data_handling": {
+            **data_handling_summary(),
+            "audio_retention_days": (
+                assembly.audio_retention_days
+                if assembly.audio_retention_days is not None
+                else data_handling_summary().get("audio_retention_days", 0)
+            ),
+        },
         "table_number": recorder_session.table_number,
         "rounds": [
             {

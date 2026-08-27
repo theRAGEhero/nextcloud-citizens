@@ -1,0 +1,143 @@
+# SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Periodic upkeep the reactive job queue cannot express.
+
+The runner only acts when something enqueues work. A phone whose battery dies
+mid-upload enqueues nothing, so its recording stayed in WAITING_FOR_CHUNKS
+forever — and because that state counts as healthy-pending, the round's
+cross-table analysis waited on it too. One dead phone wedged the whole round,
+with no organizer action that could resolve it.
+
+Sweeps are best-effort: a failure is logged and retried on the next tick, and
+must never take a recording's audio with it.
+"""
+
+from datetime import timedelta
+
+from sqlalchemy import select
+
+from citizens.db.models import Assembly, Recording
+from citizens.db.models.base import utcnow
+from citizens.db.session import session_scope
+from citizens.jobs.handlers import maybe_enqueue_round_analysis
+from citizens.logging_setup import get_logger
+from citizens.services.audit import record_audit_event
+from citizens.services.recording_states import transition
+
+log = get_logger(__name__)
+
+SWEEP_INTERVAL_SECONDS = 60.0
+# How long a recording may sit in WAITING_FOR_CHUNKS with no progress at all
+# before we stop waiting for it. Generous: a phone that regains signal an hour
+# later still re-uploads, because UPLOAD_INCOMPLETE transitions back.
+STALLED_UPLOAD_MINUTES = 20
+
+
+def sweep_stalled_uploads() -> int:
+    """Give up on recordings that have made no progress, so the round can finish.
+
+    Covers every state a dead phone can leave behind, not just
+    WAITING_FOR_CHUNKS: a battery that dies mid-round strands the recording in
+    RECORDING, which blocks the round's analysis and the table's ability to
+    start over exactly the same way. (Observed on a live instance: three
+    recordings stuck in RECORDING from abandoned sessions.)
+
+    `updated_at` bumps on every received chunk, so the clock restarts whenever
+    a phone makes any progress — this only fires on genuine silence. And it is
+    reversible: a phone that reappears resumes uploading, which moves the
+    recording back to WAITING_FOR_CHUNKS.
+    """
+    cutoff = utcnow() - timedelta(minutes=STALLED_UPLOAD_MINUTES)
+    with session_scope() as session:
+        stalled = list(
+            session.execute(
+                select(Recording).where(
+                    Recording.state.in_(("WAITING_FOR_CHUNKS", "RECORDING", "FINALIZING")),
+                    Recording.updated_at < cutoff,
+                )
+            ).scalars()
+        )
+        for recording in stalled:
+            recording.error_code = "UPLOAD_TIMED_OUT"
+            transition(recording, "UPLOAD_INCOMPLETE")
+            log.warning(
+                "upload_abandoned",
+                recording_id=recording.id,
+                table_number=recording.table_number,
+                received_chunks=recording.received_chunks,
+                total_chunks=recording.total_chunks,
+            )
+        if stalled:
+            session.flush()
+            # the round was waiting on these; it can proceed now
+            for recording in stalled:
+                maybe_enqueue_round_analysis(session, recording)
+        return len(stalled)
+
+
+def _retention_days(assembly, default_days: int) -> int:
+    """0 means keep indefinitely; a per-assembly value overrides the default."""
+    if assembly.audio_retention_days is None:
+        return default_days
+    return assembly.audio_retention_days
+
+
+def sweep_expired_audio() -> int:
+    """Delete audio for assemblies whose retention window has passed.
+
+    Audio only: transcripts, findings and reports are the record of the
+    assembly and are never touched here. The clock starts at `closed_at`, so an
+    assembly still in progress is never affected however long it runs.
+    """
+    from citizens.services import files as files_svc
+    from citizens.services import provider_config
+
+    now = utcnow()
+    purged = 0
+    with session_scope() as session:
+        candidates = list(
+            session.execute(
+                select(Assembly).where(
+                    Assembly.closed_at.is_not(None), Assembly.audio_purged_at.is_(None)
+                )
+            ).scalars()
+        )
+        if not candidates:
+            return 0  # cheap DB check first: don't ask Nextcloud on every tick
+        try:
+            default_days = int(provider_config.get_setting(
+                provider_config.default_store(), "audio_retention_days"
+            ) or 0)
+        except Exception:
+            log.warning("retention_default_unavailable", exc_info=True)
+            return 0
+        for assembly in candidates:
+            days = _retention_days(assembly, default_days)
+            if days <= 0 or assembly.closed_at + timedelta(days=days) > now:
+                continue
+            # audio only — transcripts and findings are the record of the
+            # assembly, so quoted evidence keeps rendering after the purge
+            count, freed = files_svc.delete_assembly_audio(session, assembly)
+            assembly.audio_purged_at = now
+            purged += 1
+            record_audit_event(
+                session, "audio_retention_purge", "assembly", assembly.id, actor="system",
+                data={"retention_days": days, "recordings": count, "freed_bytes": freed},
+            )
+            log.info(
+                "audio_retention_purge",
+                assembly_id=assembly.id, retention_days=days,
+                recordings=count, freed_bytes=freed,
+            )
+    return purged
+
+
+def run_sweeps() -> None:
+    for name, sweep in (
+        ("stalled_uploads", sweep_stalled_uploads),
+        ("expired_audio", sweep_expired_audio),
+    ):
+        try:
+            sweep()
+        except Exception:
+            log.error("sweep_failed", sweep=name, exc_info=True)

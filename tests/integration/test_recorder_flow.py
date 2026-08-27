@@ -11,6 +11,7 @@ import hashlib
 import re
 import subprocess
 import time
+from datetime import timedelta
 
 import pytest
 
@@ -182,6 +183,134 @@ def test_missing_chunk_detected_and_recoverable(recorder, tmp_path):
     assert _wait_for_state(recorder, recording_id, "AUDIO_READY")["state"] == "AUDIO_READY"
 
 
+def test_revoking_invites_disconnects_devices_already_joined(recorder):
+    """Revoke used to cancel the invite only, leaving anyone who had already
+    joined — including someone who photographed the QR poster — a working
+    session for up to 16 more hours."""
+    assembly_id = recorder["assembly"]["id"]
+    assert recorder["client"].get(
+        "/api/v1/public/recorder/status", headers=recorder["headers"]
+    ).status_code == 200
+
+    assert recorder["client"].post(
+        f"/api/v1/assemblies/{assembly_id}/invites/revoke"
+    ).status_code == 204
+
+    kicked = recorder["client"].get(
+        "/api/v1/public/recorder/status", headers=recorder["headers"]
+    )
+    assert kicked.status_code == 401
+
+
+def test_regenerating_qr_sheets_does_not_kick_live_tables(recorder):
+    """New codes must not knock tables off mid-round — only an explicit
+    Revoke disconnects."""
+    assembly_id = recorder["assembly"]["id"]
+    recorder["client"].post(f"/api/v1/assemblies/{assembly_id}/invites/generate")
+    assert recorder["client"].get(
+        "/api/v1/public/recorder/status", headers=recorder["headers"]
+    ).status_code == 200
+
+
+def test_chunks_are_reclaimed_once_the_audio_is_verified(recorder, tmp_path):
+    """Chunks are the upload transport, not a second archive. Nothing ever
+    collected them, so every recording sat on disk twice, permanently."""
+    from sqlalchemy import select
+
+    from citizens.config import get_settings
+    from citizens.db.models import AudioChunk, Recording
+    from citizens.db.session import session_scope
+    from citizens.storage.paths import recording_dir
+
+    audio = _make_webm_audio(tmp_path, seconds=2.0)
+    parts = _split(audio, 3)
+    recording_id = _start(recorder)
+    for sequence, part in enumerate(parts):
+        assert _upload(recorder, recording_id, sequence, part).status_code == 200
+    recorder["client"].post(
+        f"/api/v1/public/recorder/recordings/{recording_id}/complete",
+        json={"total_chunks": len(parts)},
+        headers=recorder["headers"],
+    )
+    assert _wait_for_state(recorder, recording_id, "AUDIO_READY")["state"] == "AUDIO_READY"
+
+    root = get_settings().app_persistent_storage
+    with session_scope() as session:
+        assert (
+            session.execute(
+                select(AudioChunk).where(AudioChunk.recording_id == recording_id)
+            ).scalars().all()
+            == []
+        )
+        recording = session.get(Recording, recording_id)
+        # the canonical audio and its checksum survive...
+        assert recording.sha256
+        assert (root / recording.canonical_audio_path).is_file()
+        directory = recording_dir(
+            root, recording.assembly_id, recording.round_id, recording.table_id, recording.id
+        )
+    # ...and so does the per-chunk audit trail, without the bytes
+    assert (directory / "manifest.json").is_file()
+    assert not (directory / "chunks").exists()
+
+
+def test_dead_phone_no_longer_wedges_the_round(recorder, tmp_path):
+    """A phone that dies mid-upload leaves WAITING_FOR_CHUNKS, which counted as
+    healthy-pending — so the round's cross-table analysis waited on it forever
+    and the table could not re-record either. It is reachable now."""
+    from citizens.db.models import Recording
+    from citizens.db.models.base import utcnow
+    from citizens.db.session import session_scope
+    from citizens.jobs.sweep import STALLED_UPLOAD_MINUTES, sweep_stalled_uploads
+    from citizens.services.recording import RERECORDABLE_STATES
+
+    audio = _make_webm_audio(tmp_path, seconds=2.0)
+    chunks = _split(audio, 4)
+    recording_id = _start(recorder)
+    for sequence in (0, 1, 3):
+        _upload(recorder, recording_id, sequence, chunks[sequence])
+    done = recorder["client"].post(
+        f"/api/v1/public/recorder/recordings/{recording_id}/complete",
+        json={"total_chunks": 4},
+        headers=recorder["headers"],
+    ).json()
+    assert done["state"] == "WAITING_FOR_CHUNKS"
+
+    # nothing is coming; the sweep leaves it alone until it is genuinely stale
+    assert sweep_stalled_uploads() == 0
+    with session_scope() as session:
+        recording = session.get(Recording, recording_id)
+        recording.updated_at = utcnow() - timedelta(minutes=STALLED_UPLOAD_MINUTES + 1)
+
+    assert sweep_stalled_uploads() == 1
+    with session_scope() as session:
+        recording = session.get(Recording, recording_id)
+        assert recording.state == "UPLOAD_INCOMPLETE"
+        assert recording.error_code == "UPLOAD_TIMED_OUT"
+    # and the table can start over, which WAITING_FOR_CHUNKS did not allow
+    assert "UPLOAD_INCOMPLETE" in RERECORDABLE_STATES
+
+
+def test_organizer_can_abandon_a_stalled_upload(recorder, tmp_path):
+    """During a live event nobody can wait for the sweep."""
+    audio = _make_webm_audio(tmp_path, seconds=2.0)
+    chunks = _split(audio, 4)
+    recording_id = _start(recorder)
+    for sequence in (0, 1, 3):
+        _upload(recorder, recording_id, sequence, chunks[sequence])
+    recorder["client"].post(
+        f"/api/v1/public/recorder/recordings/{recording_id}/complete",
+        json={"total_chunks": 4},
+        headers=recorder["headers"],
+    )
+    response = recorder["client"].post(f"/api/v1/recordings/{recording_id}/abandon-upload")
+    assert response.status_code == 200
+    assert response.json()["state"] == "UPLOAD_INCOMPLETE"
+    # not applicable to a healthy recording
+    again = recorder["client"].post(f"/api/v1/recordings/{recording_id}/abandon-upload")
+    assert again.status_code == 409
+
+
 def test_checksum_mismatch_rejected(recorder):
     recording_id = _start(recorder)
     response = _upload(recorder, recording_id, 0, b"real-bytes", sha="0" * 64)
@@ -249,3 +378,28 @@ def test_forwarded_for_cannot_reset_the_flood_budget(client):
         headers={"X-Origin-IP": origin, "X-Forwarded-For": "10.0.0.251"},
     )
     assert throttled.status_code == 429
+
+
+def test_giving_up_on_a_table_is_reversible(recorder, tmp_path):
+    """Abandoning a stalled upload must never cost audio: a phone that regains
+    signal afterwards has to be able to finish uploading."""
+    audio = _make_webm_audio(tmp_path, seconds=2.0)
+    parts = _split(audio, 3)
+    recording_id = _start(recorder)
+    _upload(recorder, recording_id, 0, parts[0])
+
+    # organizer stops waiting mid-recording (phone died, round must move on)
+    abandoned = recorder["client"].post(f"/api/v1/recordings/{recording_id}/abandon-upload")
+    assert abandoned.status_code == 200
+    assert abandoned.json()["state"] == "UPLOAD_INCOMPLETE"
+
+    # the phone comes back and finishes
+    assert _upload(recorder, recording_id, 1, parts[1]).status_code == 200
+    assert _upload(recorder, recording_id, 2, parts[2]).status_code == 200
+    done = recorder["client"].post(
+        f"/api/v1/public/recorder/recordings/{recording_id}/complete",
+        json={"total_chunks": 3},
+        headers=recorder["headers"],
+    ).json()
+    assert done["state"] == "ASSEMBLING"
+    assert _wait_for_state(recorder, recording_id, "AUDIO_READY")["state"] == "AUDIO_READY"

@@ -127,6 +127,7 @@ export type SttProvider = 'mistral' | 'deepgram' | 'whisper' | 'vosk'
 
 export interface ProvidersSummary {
 	organization_name: string
+	audio_retention_days: number
 	stt: {
 		provider: SttProvider
 		live_enabled: boolean
