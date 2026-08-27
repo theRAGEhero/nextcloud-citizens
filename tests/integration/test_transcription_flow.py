@@ -157,6 +157,31 @@ def test_permanent_failure_sets_state(recorded, monkeypatch):
     assert retry.status_code == 202
 
 
+def test_temporary_failure_is_still_visible_to_the_organizer(recorded, monkeypatch):
+    """A retryable failure must persist TRANSCRIPTION_FAILED too.
+
+    The job runner rolls the session back before scheduling a retry, which
+    discarded the state set by the handler. Once attempts ran out the job went
+    FAILED while the recording sat in TRANSCRIBING forever, showing the
+    organizer an "in progress" pill for a recording nothing was working on.
+    """
+    _wait_state(recorded, ("TRANSCRIBED",))
+
+    def failing(*args, **kwargs):
+        raise TranscriptionError("Service unavailable", permanent=False)
+
+    monkeypatch.setattr(
+        "citizens.services.transcription.deepgram_provider.transcribe_file", failing
+    )
+    recorded["client"].post(f"/api/v1/recordings/{recorded['recording_id']}/transcribe")
+    status = _wait_state(recorded, ("TRANSCRIPTION_FAILED",))
+    assert status["state"] == "TRANSCRIPTION_FAILED", status
+    # and the organizer can still act on it
+    assert recorded["client"].post(
+        f"/api/v1/recordings/{recorded['recording_id']}/transcribe"
+    ).status_code == 202
+
+
 def test_no_transcription_when_disabled(client, recorded):
     recorded["store"].values["stt_batch_enabled"] = "0"
     # (auto-enqueue check happens at assembly time; covered by unit of readiness)

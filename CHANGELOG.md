@@ -4,6 +4,35 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Surviving a real assembly — 2026-08-27 (v0.6.0-beta.5)
+
+First of four planned rounds of production-readiness work. Everything here is a
+failure that only appears at full scale or when something else breaks, which is
+why none of it showed up in testing with a handful of tables.
+
+- **Every table can now join.** The join limit was 10 attempts per minute *per
+  IP address* — but at a venue every phone shares one address, so from the 11th
+  table onward people scanning their QR code got "Too many requests" and a dead
+  error screen. The budget now belongs to the invite token, so each table has
+  its own, and the phone retries a busy server instead of giving up.
+- **The limit can no longer be sidestepped.** It trusted a header the client
+  sends, so anyone could reset their own budget. It now uses the address the
+  Nextcloud proxy supplies, which a client cannot forge.
+- **A failed transcription no longer disappears.** When an engine failed
+  temporarily, the error state was rolled back with the retry — so once retries
+  ran out the recording sat under an "in progress" spinner forever, with nothing
+  working on it. Failures are now recorded, visible, and retryable.
+- **Recordings stuck mid-analysis can be recovered** from the Analysis tab, and
+  a stuck transcription now offers a retry button in the Live tab. Previously
+  the only way out was editing the database by hand.
+- **Security: testing a provider connection no longer leaks the saved key.**
+  Naming a different endpoint without also entering a key made the server send
+  the *stored* key to that address. A typed-in URL now requires a typed-in key.
+- **Uploads no longer block each other.** Each chunk upload held the database's
+  single write slot while reading the upload off the network, so one phone on
+  weak WiFi could stall every other table until requests failed. The upload is
+  read first now.
+
 ### Fixed: Approve and Reject returned HTTP 405 — 2026-08-26 (v0.6.0-beta.4)
 
 - **Reviewing an AI finding now works.** Approve, Reject and Save-&-approve

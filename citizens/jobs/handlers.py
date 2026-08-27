@@ -25,6 +25,23 @@ class PermanentJobError(Exception):
     """Raised when retrying cannot help; the job goes straight to FAILED."""
 
 
+def _commit_failure_state(session: Session) -> None:
+    """Persist a recording's error state before re-raising.
+
+    The runner rolls the session back on a temporary failure before scheduling
+    the retry (citizens/jobs/runner.py). Without this commit the state set just
+    above is discarded, and when attempts finally run out the job goes FAILED
+    while the recording stays in TRANSCRIBING/ANALYZING forever — an "in
+    progress" pill for work nothing is doing.
+    """
+    try:
+        session.commit()
+    except Exception:
+        # the retry itself matters more than the bookkeeping
+        session.rollback()
+        log.warning("failure_state_commit_failed", exc_info=True)
+
+
 def handle_assemble_audio(session: Session, payload: dict) -> None:
     recording = session.get(Recording, payload["recording_id"])
     if recording is None:
@@ -72,6 +89,7 @@ def handle_transcribe_final(session: Session, payload: dict) -> None:
     except TranscriptionError as exc:
         recording.error_code = "TRANSCRIPTION_FAILED"
         transition(recording, "TRANSCRIPTION_FAILED")
+        _commit_failure_state(session)
         log.error("stt_failed", recording_id=recording.id, permanent=exc.permanent)
         if exc.permanent:
             raise PermanentJobError(str(exc)) from exc
@@ -108,6 +126,7 @@ def handle_analyze_table(session: Session, payload: dict) -> None:
     except AnalysisError as exc:
         recording.error_code = "ANALYSIS_FAILED"
         transition(recording, "ANALYSIS_FAILED")
+        _commit_failure_state(session)
         log.error("analysis_failed", recording_id=recording.id, permanent=exc.permanent)
         if exc.permanent:
             raise PermanentJobError(str(exc)) from exc

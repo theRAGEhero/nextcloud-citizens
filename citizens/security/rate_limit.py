@@ -6,6 +6,7 @@ Not a substitute for infrastructure-level protection, but keeps token
 brute-forcing and accidental client loops in check.
 """
 
+import hashlib
 import threading
 import time
 
@@ -36,10 +37,32 @@ class SlidingWindowLimiter:
                 }
 
 
-JOIN_LIMITER = SlidingWindowLimiter(max_events=10, window_seconds=60)
+# Per invite token: one table's phone should never need more than a handful of
+# attempts, and each table gets its own budget. Keying on the IP instead used to
+# reject tables 11+ at a venue, where every phone shares one NAT'd address.
+JOIN_TOKEN_LIMITER = SlidingWindowLimiter(max_events=10, window_seconds=60)
+# Coarse flood backstop. Deliberately far above any legitimate assembly: with a
+# reverse proxy in front, this key can collapse to a single address for every
+# phone, so it must never be the thing that stops a room full of tables.
+JOIN_IP_LIMITER = SlidingWindowLimiter(max_events=120, window_seconds=60)
+
+
+def token_key(token: str) -> str:
+    """Bucket key for an invite token — hashed so raw invite secrets are not
+    held in process memory or surfaced by a traceback."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
 
 
 def client_ip(request: Request) -> str:
+    """AppAPI sets `x-origin-ip` itself, stripping any client-supplied copy, so
+    it is the only trustworthy client address behind the proxy. X-Forwarded-For
+    is accepted only as a fallback for direct deployments — it is
+    client-controlled, and preferring it let anyone reset their own bucket with
+    a made-up header.
+    """
+    origin = request.headers.get("x-origin-ip", "").strip()
+    if origin:
+        return origin
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
         return forwarded.split(",")[0].strip()

@@ -215,3 +215,37 @@ def test_join_rate_limited(client):
         client.post("/api/v1/public/join", json={"token": "y" * 43}, headers=headers)
     throttled = client.post("/api/v1/public/join", json={"token": "y" * 43}, headers=headers)
     assert throttled.status_code == 429
+
+
+def test_every_table_can_join_from_one_venue_address(client):
+    """At a venue all phones share one NAT'd address. Keying the budget on the
+    IP threw 429 at tables 11+ while they were scanning their QR codes; the
+    budget belongs to the invite token, one per table."""
+    headers = {"X-Origin-IP": "203.0.113.5"}
+    statuses = [
+        client.post(
+            "/api/v1/public/join", json={"token": f"table{n:02d}{'z' * 36}"}, headers=headers
+        ).status_code
+        for n in range(20)
+    ]
+    assert 429 not in statuses, statuses
+    assert set(statuses) == {401}  # rejected as unknown tokens, never throttled
+
+
+def test_forwarded_for_cannot_reset_the_flood_budget(client):
+    """X-Forwarded-For is client-controlled, so preferring it let anyone mint a
+    fresh bucket per request. AppAPI sets x-origin-ip itself and strips any
+    incoming copy, so that is what the backstop counts."""
+    origin = "198.51.100.9"
+    for n in range(120):
+        client.post(
+            "/api/v1/public/join",
+            json={"token": f"flood{n:03d}{'q' * 35}"},
+            headers={"X-Origin-IP": origin, "X-Forwarded-For": f"10.0.0.{n % 250}"},
+        )
+    throttled = client.post(
+        "/api/v1/public/join",
+        json={"token": f"final{'q' * 38}"},
+        headers={"X-Origin-IP": origin, "X-Forwarded-For": "10.0.0.251"},
+    )
+    assert throttled.status_code == 429

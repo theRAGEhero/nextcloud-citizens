@@ -106,6 +106,43 @@ def test_connection_test_mocked(admin_client, monkeypatch):
     assert captured["auth"] == "Bearer mk-test"
 
 
+def test_saved_key_is_never_sent_to_a_typed_in_endpoint(admin_client, monkeypatch):
+    """Testing a connection must not become a way to read the stored key back.
+
+    `api_key` and `base_url` are independent fields, so naming only a URL used
+    to make the server send the SAVED key as a Bearer token to that host.
+    """
+    client, store = admin_client
+    store.set_value("analysis_api_key", "sk-stored-secret-0001", sensitive=True)
+
+    reached = {}
+
+    def fake_get(url, headers=None, timeout=None):
+        reached["url"] = url
+        reached["auth"] = (headers or {}).get("Authorization", "")
+
+        class FakeResponse:
+            status_code = 200
+
+        return FakeResponse()
+
+    monkeypatch.setattr(provider_config.httpx, "get", fake_get)
+    result = client.post(
+        "/api/v1/admin/providers/test",
+        json={"target": "analysis", "base_url": "https://attacker.example"},
+    ).json()
+
+    assert result["ok"] is False
+    assert reached == {}, f"stored key was sent to {reached.get('url')}"
+    # the same request with an explicit key is still allowed
+    allowed = client.post(
+        "/api/v1/admin/providers/test",
+        json={"target": "analysis", "base_url": "https://ollama.example/v1", "api_key": "sk-typed"},
+    ).json()
+    assert allowed == {"ok": True, "message": "Connected"}
+    assert reached["auth"] == "Bearer sk-typed"
+
+
 def test_update_is_audited_without_values(admin_client):
     client, _ = admin_client
     client.put("/api/v1/admin/providers", json={"mistral_api_key": "mk-super-secret-999"})

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Organizer API: AI findings review (approve/reject/edit) and analysis triggers."""
 
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from citizens.db.models import Finding, Recording, TranscriptSegment
+from citizens.db.models import AppJob, Finding, Recording, TranscriptSegment
 from citizens.db.models.base import utcnow
 from citizens.db.session import get_db
 from citizens.security.identity import CurrentUser
@@ -148,6 +149,25 @@ class AnalyzeIn(BaseModel):
     force: bool = False
 
 
+def _recordings_with_live_analysis(session: Session) -> set[str]:
+    """Recording ids that already have an ANALYZE_TABLE job queued, running or
+    backing off, so a manual re-run doesn't stack a duplicate behind one that
+    is merely slow."""
+    live = session.execute(
+        select(AppJob.payload_json).where(
+            AppJob.type == "ANALYZE_TABLE",
+            AppJob.state.in_(("QUEUED", "RUNNING", "RETRY")),
+        )
+    ).scalars()
+    busy = set()
+    for payload in live:
+        try:
+            busy.add(json.loads(payload)["recording_id"])
+        except (ValueError, KeyError):
+            continue
+    return busy
+
+
 @router.post("/rounds/{round_id}/analyze", status_code=202)
 def request_analysis(round_id: str, data: AnalyzeIn, user: CurrentUser, session: DB):
     """(Re)run analysis for every transcribed table of the round; cross-table
@@ -162,16 +182,30 @@ def request_analysis(round_id: str, data: AnalyzeIn, user: CurrentUser, session:
         session.execute(
             select(Recording).where(
                 Recording.round_id == round_.id,
-                Recording.state.in_(("TRANSCRIBED", "ANALYSIS_FAILED", "READY_FOR_REVIEW")),
+                # ANALYZING is included so a recording whose job exhausted its
+                # retries can be recovered — without it the only way out of
+                # that state was editing the database by hand
+                Recording.state.in_(
+                    ("TRANSCRIBED", "ANALYSIS_FAILED", "READY_FOR_REVIEW", "ANALYZING")
+                ),
             )
         ).scalars()
     )
     if not recordings:
         raise HTTPException(status_code=409, detail="No transcribed recordings to analyze yet")
+    busy = _recordings_with_live_analysis(session)
+    queued = 0
     for recording in recordings:
+        if recording.id in busy:
+            continue  # a job is still working or backing off; don't stack another
         enqueue_job(session, "ANALYZE_TABLE", {"recording_id": recording.id, "force": data.force})
+        queued += 1
+    if queued == 0:
+        raise HTTPException(
+            status_code=409, detail="Analysis is already running for every table of this round"
+        )
     record_audit_event(
         session, "analysis_requested", "round", round_.id, actor=user,
-        data={"recordings": len(recordings), "force": data.force},
+        data={"recordings": queued, "force": data.force},
     )
-    return {"queued": len(recordings)}
+    return {"queued": queued}

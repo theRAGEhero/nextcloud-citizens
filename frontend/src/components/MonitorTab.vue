@@ -322,12 +322,12 @@ function pendingChunks(table: MonitorTable): number {
 						<td style="text-align: right">
 							<div class="cz-row" style="gap: 4px; justify-content: flex-end; flex-wrap: nowrap">
 								<CzButton
-									v-if="table.recording && ['AUDIO_READY', 'TRANSCRIPTION_FAILED'].includes(table.recording.state)"
+									v-if="table.recording && ['AUDIO_READY', 'TRANSCRIPTION_FAILED', 'TRANSCRIBING'].includes(table.recording.state)"
 									small
 									variant="primary"
 									:icon="mdiTextBoxPlusOutline"
 									:disabled="busy"
-									title="Transcribe"
+									:title="table.recording.state === 'TRANSCRIBING' ? 'Retry transcription (use if it has been stuck)' : 'Transcribe'"
 									@click="transcribe(table.recording.id)" />
 								<CzButton
 									v-if="table.recording && table.recording.state === 'TRANSCRIBED'"

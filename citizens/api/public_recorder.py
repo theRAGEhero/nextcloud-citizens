@@ -18,7 +18,12 @@ from citizens.config import get_settings
 from citizens.db.models import Assembly, RecorderSession, Recording
 from citizens.db.models.base import utcnow
 from citizens.db.session import get_db
-from citizens.security.rate_limit import JOIN_LIMITER, client_ip
+from citizens.security.rate_limit import (
+    JOIN_IP_LIMITER,
+    JOIN_TOKEN_LIMITER,
+    client_ip,
+    token_key,
+)
 from citizens.services import recording as rec_svc
 from citizens.services.live_captions import LIVE_CAPTIONS
 from citizens.services.provider_config import live_stt_snapshot
@@ -30,14 +35,18 @@ router = APIRouter(prefix="/public")
 DB = Annotated[Session, Depends(get_db)]
 
 
-def get_recorder_session(
-    session: DB,
-    authorization: Annotated[str, Header()] = "",
-) -> RecorderSession:
+def _session_from_authorization(session: Session, authorization: str) -> RecorderSession:
     scheme, _, bearer = authorization.partition(" ")
     if scheme.lower() != "bearer" or not bearer:
         raise HTTPException(status_code=401, detail="Missing recorder session token")
     return rec_svc.get_session_by_bearer(session, bearer.strip())
+
+
+def get_recorder_session(
+    session: DB,
+    authorization: Annotated[str, Header()] = "",
+) -> RecorderSession:
+    return _session_from_authorization(session, authorization)
 
 
 RecorderSess = Annotated[RecorderSession, Depends(get_recorder_session)]
@@ -49,7 +58,8 @@ class JoinIn(BaseModel):
 
 @router.post("/join")
 def join(data: JoinIn, request: Request, session: DB):
-    JOIN_LIMITER.check(client_ip(request))
+    JOIN_TOKEN_LIMITER.check(token_key(data.token))
+    JOIN_IP_LIMITER.check(client_ip(request))
     recorder_session, bearer = rec_svc.create_session_from_invite(session, data.token)
     return {
         "session_token": bearer,
@@ -79,15 +89,21 @@ async def upload_chunk(
     recording_id: str,
     sequence_number: int,
     request: Request,
-    recorder_session: RecorderSess,
     session: DB,
+    authorization: Annotated[str, Header()] = "",
     x_chunk_sha256: Annotated[str, Header()] = "",
 ):
     if not x_chunk_sha256:
         raise HTTPException(status_code=400, detail="X-Chunk-SHA256 header required")
     if sequence_number < 0 or sequence_number > 100000:
         raise HTTPException(status_code=422, detail="Invalid sequence number")
+    # Read the upload BEFORE touching the database. Authentication is a query,
+    # and every query here opens BEGIN IMMEDIATE — SQLite's single writer slot.
+    # Resolving the session as a dependency held that slot for the whole body
+    # read, so one phone on congested venue WiFi stalled every other table
+    # until they hit busy_timeout and got "database is locked".
     body = await request.body()
+    recorder_session = _session_from_authorization(session, authorization)
     recording = rec_svc.get_session_recording(session, recorder_session, recording_id)
     result = rec_svc.receive_chunk(session, recording, sequence_number, x_chunk_sha256, body)
     if not result.get("duplicate"):

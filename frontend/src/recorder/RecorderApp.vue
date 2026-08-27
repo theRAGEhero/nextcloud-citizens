@@ -4,7 +4,7 @@
 import { mdiAlertCircleOutline, mdiQrcodeScan } from '@mdi/js'
 import { computed, onMounted, ref } from 'vue'
 import SvgIcon from '../components/ui/SvgIcon.vue'
-import { recorderApi, type JoinResult, type RoundInfo } from './api'
+import { recorderApi, RecorderApiError, type JoinResult, type RoundInfo } from './api'
 import ArmedScreen from './components/ArmedScreen.vue'
 import Preflight from './components/Preflight.vue'
 import RecordingScreen from './components/RecordingScreen.vue'
@@ -23,7 +23,26 @@ const session = ref<JoinResult | null>(null)
 const selectedRound = ref<RoundInfo | null>(null)
 const recoveryRecording = ref<StoredRecording | null>(null)
 
+const joinBusy = ref(false)
+
 const orchestrated = computed(() => session.value?.assembly.recording_mode === 'orchestrated')
+
+/** Every table scans its QR within the same minute, so a burst at the door is
+ * normal traffic, not abuse. A 429 here used to leave that table on a dead
+ * error screen; retry with jittered backoff so phones don't collide again. */
+async function joinWithRetry(token: string): Promise<JoinResult> {
+	for (let attempt = 0; ; attempt++) {
+		try {
+			return await recorderApi.join(token)
+		} catch (err) {
+			const status = err instanceof RecorderApiError ? err.status : 0
+			if ((status !== 429 && status < 500) || attempt >= 5) throw err
+			joinBusy.value = true
+			const backoff = 1500 * 2 ** attempt + Math.random() * 1500
+			await new Promise((resolve) => setTimeout(resolve, backoff))
+		}
+	}
+}
 
 function startRound(round: RoundInfo): void {
 	selectedRound.value = round
@@ -57,7 +76,7 @@ onMounted(async () => {
 	const match = window.location.hash.match(/#\/join\/(.+)$/)
 	if (match) {
 		try {
-			const joined = await recorderApi.join(decodeURIComponent(match[1]))
+			const joined = await joinWithRetry(decodeURIComponent(match[1]))
 			sessionStore(joined)
 			// remove the invite secret from the visible URL (brief §14)
 			history.replaceState(null, '', window.location.pathname + window.location.search)
@@ -114,7 +133,9 @@ function sessionStorageClear(): void {
 		<div v-if="screen === 'joining'" class="rc-scroll">
 			<div class="rc-hero" style="padding-top: 26vh">
 				<div class="rc-hero__icon"><span class="rc-spin" style="width: 30px; height: 30px"></span></div>
-				<p class="rc-muted">Connecting to the assembly…</p>
+				<p class="rc-muted">
+					{{ joinBusy ? 'Lots of tables joining at once — waiting for a turn…' : 'Connecting to the assembly…' }}
+				</p>
 			</div>
 		</div>
 

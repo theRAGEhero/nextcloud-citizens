@@ -72,6 +72,11 @@ def analysis_enabled_cached() -> bool:
 
 KEY_FIELDS = ("mistral_api_key", "deepgram_api_key", "whisper_api_key", "analysis_api_key")
 
+# targets whose connection test sends a stored API key, so an admin-supplied
+# endpoint override must be accompanied by an admin-supplied key (see
+# test_connection). Vosk is absent because it authenticates with no key.
+KEYED_TEST_TARGETS = ("whisper", "analysis", "mistral", "deepgram")
+
 # where each engine's live captions connect; Deepgram's is configurable so
 # servers speaking the same protocol (WhisperLiveKit) can be used instead
 LIVE_ENDPOINT_KEYS = {
@@ -230,6 +235,16 @@ def test_connection(
     """Verify credentials against the provider. `override_key` lets the admin
     test a key typed into the form BEFORE saving it. Never logs or returns
     key material."""
+    # A typed-in URL must come with a typed-in key. Otherwise the saved key is
+    # sent as a Bearer token to whatever host was named in the request, which
+    # would turn this endpoint into a way to read back a key that no API is
+    # ever supposed to return.
+    if override_base_url and not override_key and target in KEYED_TEST_TARGETS:
+        return {
+            "ok": False,
+            "message": "Enter the API key as well when testing a different endpoint — "
+                       "the saved key is never sent to a URL typed into this form",
+        }
     try:
         if target == "mistral":
             key = override_key or store.get_value("mistral_api_key")
