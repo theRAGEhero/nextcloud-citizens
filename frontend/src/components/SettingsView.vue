@@ -330,16 +330,19 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 							{{ testResults.mistral.message }}
 						</span>
 					</div>
-					<div class="cz-field">
-						<label>Final transcription model</label>
-						<input v-model="mistralBatchModel" type="text" placeholder="voxtral-mini-latest" />
-					</div>
-					<div class="cz-field">
-						<label>Live transcription model</label>
-						<input v-model="mistralLiveModel" type="text" placeholder="voxtral-mini-transcribe-realtime-2602" />
-						<span class="cz-muted" style="font-size: 12px">
-							Voxtral Realtime. Billed separately from the final transcription.
-						</span>
+					<div class="cz-field" style="grid-column: span 2">
+						<div class="cz-modelhead">
+							<span>Live transcription (provisional captions)</span>
+							<span>Final transcription (canonical)</span>
+						</div>
+						<div class="cz-modelrow">
+							<input v-model="mistralLiveModel" type="text" placeholder="voxtral-mini-transcribe-realtime-2602" aria-label="Live transcription model" />
+							<input v-model="mistralBatchModel" type="text" placeholder="voxtral-mini-latest" aria-label="Final transcription model" />
+						</div>
+						<div class="cz-modelhead cz-modelhead--hint">
+							<span>Voxtral Realtime. Billed separately from the final transcription.</span>
+							<span>Used for the canonical transcript after each round.</span>
+						</div>
 					</div>
 				</div>
 				<div v-else-if="sttProvider === 'deepgram'" class="cz-fieldgrid">
@@ -359,13 +362,19 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 							{{ testResults.deepgram.message }}
 						</span>
 					</div>
-					<div class="cz-field">
-						<label>Final transcription model</label>
-						<input v-model="deepgramBatchModel" type="text" placeholder="nova-3" />
-					</div>
-					<div class="cz-field">
-						<label>Live transcription model</label>
-						<input v-model="deepgramLiveModel" type="text" placeholder="nova-3" />
+					<div class="cz-field" style="grid-column: span 2">
+						<div class="cz-modelhead">
+							<span>Live transcription (provisional captions)</span>
+							<span>Final transcription (canonical)</span>
+						</div>
+						<div class="cz-modelrow">
+							<input v-model="deepgramLiveModel" type="text" placeholder="nova-3" aria-label="Live transcription model" />
+							<input v-model="deepgramBatchModel" type="text" placeholder="nova-3" aria-label="Final transcription model" />
+						</div>
+						<div class="cz-modelhead cz-modelhead--hint">
+							<span>Streams natively and carries speaker labels.</span>
+							<span>Used for the canonical transcript after each round.</span>
+						</div>
 					</div>
 					<div class="cz-field" style="grid-column: span 2">
 						<label>Live caption endpoint</label>
@@ -388,21 +397,22 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 							the audio never leaves your infrastructure.
 						</span>
 					</div>
-					<div class="cz-field">
-						<label>Final transcription model</label>
-						<input v-model="whisperBatchModel" type="text" placeholder="whisper-1" />
-						<span class="cz-muted" style="font-size: 12.5px">
-							A model name containing “diarize” (e.g. gpt-4o-transcribe-diarize) is
-							requested in diarized mode and returns speaker labels.
-						</span>
-					</div>
-					<div class="cz-field">
-						<label>Live transcription model</label>
-						<input v-model="whisperLiveModel" type="text" placeholder="same as final" />
-						<span class="cz-muted" style="font-size: 12.5px">
-							Optional. Captions re-transcribe a rolling window every few seconds, so a
-							smaller model keeps up more cheaply. Leave empty to reuse the final model.
-						</span>
+					<div class="cz-field" style="grid-column: span 2">
+						<div class="cz-modelhead">
+							<span>Live transcription (provisional captions)</span>
+							<span>Final transcription (canonical)</span>
+						</div>
+						<div class="cz-modelrow">
+							<input v-model="whisperLiveModel" type="text" placeholder="same as final" aria-label="Live transcription model" />
+							<input v-model="whisperBatchModel" type="text" placeholder="whisper-1" aria-label="Final transcription model" />
+						</div>
+						<div class="cz-modelhead cz-modelhead--hint">
+							<span>Optional — captions re-transcribe a rolling window every few
+								seconds, so a smaller model keeps up more cheaply. Empty reuses the
+								final model.</span>
+							<span>A name containing “diarize” (e.g. gpt-4o-transcribe-diarize) is
+								requested in diarized mode and returns speaker labels.</span>
+						</div>
 					</div>
 					<div class="cz-field">
 						<label>API key (optional)</label>
@@ -458,27 +468,25 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 							language empty until you need it; download a model with
 							<code>scripts/vosk-model.sh &lt;name&gt;</code>.
 						</span>
-						<div class="cz-row" style="flex-wrap: nowrap; gap: 8px; margin-bottom: 4px">
-							<span class="cz-muted" style="width: 78px; font-size: 12px; font-weight: 600">Language</span>
-							<span class="cz-muted" style="flex: 1; font-size: 12px; font-weight: 600">Live captions (provisional)</span>
-							<span class="cz-muted" style="flex: 1; font-size: 12px; font-weight: 600">Final transcript (canonical)</span>
+						<div class="cz-modelhead" style="grid-template-columns: 78px 1fr 1fr">
+							<span>Language</span>
+							<span>Live transcription (provisional captions)</span>
+							<span>Final transcription (canonical)</span>
 						</div>
 						<div
 							v-for="lang in ASSEMBLY_LANGUAGES"
 							:key="lang.code"
-							class="cz-row"
-							style="flex-wrap: nowrap; gap: 8px; margin-bottom: 6px">
-							<span style="width: 78px; font-size: 13.5px">{{ lang.label }}</span>
+							class="cz-modelrow"
+							style="grid-template-columns: 78px 1fr 1fr; margin-bottom: 6px">
+							<span style="font-size: 13.5px; align-self: center">{{ lang.label }}</span>
 							<input
 								v-model="voskModels[lang.code].live"
 								type="text"
-								style="flex: 1"
 								placeholder="not configured"
 								:aria-label="`Live caption model for ${lang.label}`" />
 							<input
 								v-model="voskModels[lang.code].final"
 								type="text"
-								style="flex: 1"
 								placeholder="same as live"
 								:aria-label="`Final transcript model for ${lang.label}`" />
 						</div>

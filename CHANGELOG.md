@@ -4,6 +4,29 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Wrong report on a phone, Vosk crash, Settings polish — 2026-08-28 (v0.6.0-beta.10)
+
+- **A phone could download another assembly's report.** Not a mistake on your
+  part: Nextcloud's app proxy adds an hour of browser caching to any download
+  that does not set its own cache rule, and the report URL is identical for
+  every assembly — only the session token tells them apart, and caches do not
+  read tokens. A device used in two assemblies served the first one's PDF for an
+  hour. All downloads now refuse to be cached. The same fault also returned a
+  stale report to organizers after approving findings, and stale audio after
+  deleting it.
+- **Vosk crashed when two tables recorded at once.** A lock created at the wrong
+  moment failed only when two connections needed a model simultaneously — which
+  is every real assembly. It passed every earlier test because one connection
+  never contends. `scripts/vosk-check.sh` now reproduces exactly that.
+- **Live and final transcription are now laid out the same for every engine**,
+  as two aligned columns with the headings above the model fields, instead of
+  three different vocabularies and no alignment.
+- **The QR sheet is a proper PDF.** Printing from the browser silently dropped
+  every page after the first, so ten tables printed as four. The Print button
+  now downloads a sheet with four codes per page, cut lines, and the join link
+  under each code for a phone that cannot scan.
+
+
 ### Settings in tabs, and Vosk models by name — 2026-08-28 (v0.6.0-beta.9)
 
 - **Settings is now three tabs** — Audio, AI analysis, General — instead of one

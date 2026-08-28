@@ -201,6 +201,10 @@ export const recorderApi = {
 	async reportPdf(token: string): Promise<Blob> {
 		const response = await fetch(appBase() + '/api/v1/public/recorder/report.pdf', {
 			headers: { Authorization: `Bearer ${token}` },
+			// This URL is identical for every assembly — only the bearer token
+			// says which one — so a cached copy is another session's report.
+			// The server sends no-store; this is the second lock on that door.
+			cache: 'no-store',
 		})
 		if (!response.ok) throw new RecorderApiError(response.status, `HTTP ${response.status}`)
 		return response.blob()

@@ -22,8 +22,9 @@ NETWORK=${VOSK_NETWORK:-nextcloud_nextcloud-network}
 HOST_PORT=${VOSK_HOST_PORT:-2700}
 ROOT=${VOSK_ROOT:-/srv/citizens-vosk}
 MEMORY=${VOSK_MEMORY:-900m}
-# one language per assembly, so one model resident is the normal case
-CACHE=${VOSK_MODEL_CACHE:-1}
+# how many languages may be live at the same time; idle eviction (below)
+# is what actually frees memory between assemblies
+CACHE=${VOSK_MODEL_CACHE:-2}
 IDLE=${VOSK_MODEL_IDLE_SECONDS:-1800}
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

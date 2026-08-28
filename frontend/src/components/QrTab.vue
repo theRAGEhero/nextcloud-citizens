@@ -3,7 +3,7 @@
 <script setup lang="ts">
 import { mdiContentCopy, mdiPrinter, mdiQrcode, mdiRefresh, mdiCancel } from '@mdi/js'
 import { onMounted, ref } from 'vue'
-import { api } from '../api'
+import { api, BASE } from '../api'
 import type { AssemblyDetail, Invite, InviteGenerated } from '../types'
 import CzButton from './ui/CzButton.vue'
 import CzConfirm from './ui/CzConfirm.vue'
@@ -69,7 +69,9 @@ async function revoke(): Promise<void> {
 }
 
 function printSheet(): void {
-	window.print()
+	// A real PDF, not window.print(): the browser print dropped every page
+	// after the first, and the layout had to survive Nextcloud's global CSS.
+	window.open(`${BASE}/api/v1/assemblies/${props.assembly.id}/invites/sheet.pdf`, '_blank')
 }
 
 async function copyUrl(url: string): Promise<void> {
@@ -107,6 +109,15 @@ const hasActive = () => invites.value.some((i) => i.active)
 					</CzButton>
 				</div>
 			</div>
+			<p
+				v-if="generated.length && generated.length < invites.filter((i) => i.active).length"
+				class="cz-muted"
+				style="margin: 12px 0 0; font-size: 13px">
+				Showing {{ generated.length }} of
+				{{ invites.filter((i) => i.active).length }} table codes — the rest were issued
+				under a different app secret and cannot be re-displayed. Regenerate to get a
+				complete sheet, which revokes the current codes.
+			</p>
 			<p v-if="invites.length && !generated.length" class="cz-muted" style="margin: 12px 0 0; font-size: 13px">
 				{{ invites.filter((i) => i.active).length }} of {{ invites.length }} table codes active,
 				but they were issued before re-viewing existed — regenerate to obtain new QR codes.

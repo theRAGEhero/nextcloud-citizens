@@ -84,3 +84,38 @@ def test_render_pdf_with_findings_and_unicode():
 def test_render_pdf_without_logo_matches_magic(tmp_path):
     missing_logo = tmp_path / "nope.png"
     assert render_pdf(REPORT, missing_logo).startswith(b"%PDF")
+
+
+def test_qr_sheet_paginates_every_table():
+    """Browser printing dropped every page after the first. Twenty tables must
+    come back as five pages with all twenty codes."""
+    from types import SimpleNamespace
+
+    from citizens.services.qr_sheet import PER_PAGE, render_qr_sheet
+
+    def cards(count):
+        return [
+            SimpleNamespace(table_number=n, url=f"https://example.test/#/join/tok{n:03d}")
+            for n in range(1, count + 1)
+        ]
+
+    for count in (1, PER_PAGE, PER_PAGE + 1, 20):
+        pdf = render_qr_sheet("Assembly", cards(count), None, "Org")
+        assert pdf.startswith(b"%PDF")
+        expected_pages = -(-count // PER_PAGE)  # ceiling division
+        assert pdf.count(b"/Type /Page\n") == expected_pages, (
+            f"{count} tables should print on {expected_pages} page(s)"
+        )
+
+
+def test_qr_sheet_survives_no_invites_and_a_bad_logo(tmp_path):
+    from types import SimpleNamespace
+
+    from citizens.services.qr_sheet import render_qr_sheet
+
+    assert render_qr_sheet("Empty", [], None, "").startswith(b"%PDF")
+    broken = tmp_path / "not-an-image.png"
+    broken.write_bytes(b"nonsense")
+    card = [SimpleNamespace(table_number=1, url="https://example.test/#/join/x")]
+    # a broken logo must cost the logo, never the sheet
+    assert render_qr_sheet("Assembly", card, broken, "Org").startswith(b"%PDF")

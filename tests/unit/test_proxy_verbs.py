@@ -92,3 +92,36 @@ def test_frontend_clients_never_send_an_unproxyable_verb():
         source = (ROOT / client).read_text()
         for verb in ("PATCH", "TRACE", "CONNECT"):
             assert f"'{verb}'" not in source, f"{client} sends {verb}, which the proxy drops"
+
+
+def test_every_download_refuses_to_be_cached(routes):
+    """AppAPI's proxy adds `Cache-Control: private, max-age=3600` to any
+    non-JSON response that does not set its own
+    (ExAppProxyController::buildProxyResponse). For downloads that is wrong,
+    and for one it leaked data: /api/v1/public/recorder/report.pdf is the same
+    URL for every assembly, so a phone used in two of them served the first
+    one's report from cache for an hour.
+
+    Checked against the source rather than a live response, so an endpoint
+    added later cannot quietly reintroduce it.
+    """
+    import inspect
+
+    from citizens.api import files, public_recorder, reports
+
+    downloads = {
+        "report.md": (reports, "assembly_report_markdown"),
+        "report.pdf": (reports, "assembly_report_pdf"),
+        "phone report.pdf": (public_recorder, "published_report_pdf"),
+        "recording audio": (files, "download_audio"),
+        "zip archives": (files, "_zip_response"),
+    }
+    missing = []
+    for label, (module, name) in downloads.items():
+        source = inspect.getsource(getattr(module, name))
+        if "download_headers" not in source and "NO_STORE" not in source:
+            missing.append(label)
+    assert not missing, (
+        "these downloads do not set Cache-Control, so the proxy will cache them "
+        f"for an hour: {missing}"
+    )

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from citizens.api.downloads import download_headers
 from citizens.config import get_settings
 from citizens.db.models import RecorderSession, Recording
 from citizens.db.session import get_db
@@ -71,6 +72,25 @@ def invite_links(assembly_id: str, user: CurrentUser, session: DB):
     omitted and need a regenerate)."""
     assembly = get_owned_assembly(session, assembly_id, user)
     return invite_svc.invite_links(session, assembly)
+
+
+@router.get("/assemblies/{assembly_id}/invites/sheet.pdf")
+def invite_sheet_pdf(assembly_id: str, user: CurrentUser, session: DB):
+    """The printable QR sheet: four tables per A4 page, with cut lines.
+
+    Built here rather than with the browser's print, which silently dropped
+    every page after the first.
+    """
+    from fastapi.responses import Response
+
+    from citizens.services.branding import logo_path, organization_name
+    from citizens.services.qr_sheet import render_qr_sheet
+
+    assembly = get_owned_assembly(session, assembly_id, user)
+    cards = invite_svc.invite_links(session, assembly)
+    pdf = render_qr_sheet(assembly.name, cards, logo_path(), organization_name())
+    filename = f"{assembly.name[:40].replace(' ', '-')}-table-codes.pdf"
+    return Response(pdf, media_type="application/pdf", headers=download_headers(filename))
 
 
 @router.post(

@@ -806,18 +806,60 @@
 	}
 }
 
+/* live/final model columns: the two headings sit directly above their inputs
+   and stay aligned, so every engine reads the same way */
+#citizens-app .cz-modelhead,
+#citizens-app .cz-modelrow {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+	align-items: start;
+}
+
+#citizens-app .cz-modelhead {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--cz-text-muted);
+	margin-bottom: 4px;
+}
+
+#citizens-app .cz-modelhead--hint {
+	font-weight: 400;
+	font-size: 12.5px;
+	margin: 6px 0 0;
+}
+
+#citizens-app .cz-modelrow input { width: 100%; }
+
 /* ================= print (QR sheet) ================= */
 
 @media print {
+	/* The Print button downloads a proper PDF; this only makes Ctrl+P degrade
+	   sanely. It must NOT position the grid absolutely: an absolutely
+	   positioned box does not fragment across pages, so every page after the
+	   first was silently dropped. */
 	body * { visibility: hidden; }
-	#citizens-app { height: auto; overflow: visible; }
+	#citizens-app {
+		display: block;
+		height: auto;
+		max-height: none;
+		overflow: visible;
+		position: static;
+	}
+	#citizens-app .cz-sidebar,
+	#citizens-app .cz-mobilebar { display: none; }
+	#citizens-app .cz-content {
+		overflow: visible;
+		height: auto;
+		padding: 0;
+	}
 	#citizens-app .cz-qr-grid, #citizens-app .cz-qr-grid * { visibility: visible; }
 	#citizens-app .cz-qr-grid {
-		position: absolute;
-		inset: 0;
+		display: grid;
 		grid-template-columns: repeat(2, 1fr);
 		gap: 8mm;
 	}
 	#citizens-app .cz-qr-item { break-inside: avoid; border: 1px solid #000; }
 	#citizens-app .cz-qr-item .cz-btn { display: none; }
+}
 }

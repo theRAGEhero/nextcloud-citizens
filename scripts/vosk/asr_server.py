@@ -36,9 +36,26 @@ from vosk import KaldiRecognizer, Model, SpkModel
 # forever — ~300 MB for a small model, on a host that does not have it spare.
 _MODEL_CACHE = OrderedDict()
 _MODEL_USERS = {}  # path -> live connection count; never evict one in use
-_MODEL_LOCK = asyncio.Lock()
 
-CACHE_SIZE = int(os.environ.get("VOSK_MODEL_CACHE", 1))
+# Created inside the running loop, never at import. On this image's Python 3.9
+# asyncio.Lock() binds to whatever loop exists at construction, and an
+# import-time lock belongs to the wrong one — which only fails when two
+# connections actually contend for it, i.e. exactly when two tables record at
+# the same time. Uncontended acquires never await, so it looks fine until it
+# matters.
+_MODEL_LOCK = None
+
+
+def _model_lock():
+    global _MODEL_LOCK
+    if _MODEL_LOCK is None:
+        _MODEL_LOCK = asyncio.Lock()
+    return _MODEL_LOCK
+
+# how many languages can be live at once, not a memory budget: idle
+# eviction is what reclaims memory. Too small and an overlap makes the
+# next table in the evicted language load a SECOND copy of it.
+CACHE_SIZE = int(os.environ.get("VOSK_MODEL_CACHE", 2))
 IDLE_SECONDS = float(os.environ.get("VOSK_MODEL_IDLE_SECONDS", 1800))
 SWEEP_SECONDS = 60.0
 _IDLE_SINCE = {}  # path -> when its last connection closed
@@ -51,7 +68,7 @@ async def load_model(path, loop):
     means concurrent connections for the same new language wait for one load
     instead of starting several.
     """
-    async with _MODEL_LOCK:
+    async with _model_lock():
         if path in _MODEL_CACHE:
             _MODEL_CACHE.move_to_end(path)
         else:
@@ -68,7 +85,7 @@ async def release_model(path):
     """One connection finished with this model."""
     if not path:
         return
-    async with _MODEL_LOCK:
+    async with _model_lock():
         remaining = _MODEL_USERS.get(path, 1) - 1
         if remaining > 0:
             _MODEL_USERS[path] = remaining
@@ -102,7 +119,7 @@ async def sweep_idle_models():
     while True:
         await asyncio.sleep(SWEEP_SECONDS)
         now = time.monotonic()
-        async with _MODEL_LOCK:
+        async with _model_lock():
             for path, since in list(_IDLE_SINCE.items()):
                 if _MODEL_USERS.get(path) or now - since < IDLE_SECONDS:
                     continue

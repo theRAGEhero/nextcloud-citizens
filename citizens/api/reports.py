@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
+from citizens.api.downloads import download_headers
 from citizens.db.models.base import utcnow
 from citizens.db.session import get_db
 from citizens.security.identity import CurrentUser
@@ -60,10 +61,7 @@ def assembly_report_markdown(
     return PlainTextResponse(
         markdown,
         media_type="text/markdown; charset=utf-8",
-        headers={
-            "Content-Disposition":
-                f'attachment; filename="{_report_filename(assembly.name, "md")}"'
-        },
+        headers=download_headers(_report_filename(assembly.name, "md")),
     )
 
 
@@ -84,10 +82,7 @@ def assembly_report_pdf(
     return Response(
         pdf,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition":
-                f'attachment; filename="{_report_filename(assembly.name, "pdf")}"'
-        },
+        headers=download_headers(_report_filename(assembly.name, "pdf")),
     )
 
 

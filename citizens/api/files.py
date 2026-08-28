@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
+from citizens.api.downloads import NO_STORE
 from citizens.db.models import Recording
 from citizens.db.session import get_db
 from citizens.security.identity import CurrentUser
@@ -54,6 +55,9 @@ def download_audio(recording_id: str, user: CurrentUser, session: DB):
         path,
         media_type=recording.mime_type.split(";")[0] or "audio/webm",
         filename=files_svc.audio_filename(assembly, recording, position),
+        # without this the proxy caches it for an hour, so deleting the audio
+        # and downloading again still returns the file
+        headers={"Cache-Control": NO_STORE},
     )
 
 
@@ -135,5 +139,6 @@ def _zip_response(archive, filename: str) -> FileResponse:
         archive,
         media_type="application/zip",
         filename=filename,
+        headers={"Cache-Control": NO_STORE},
         background=BackgroundTask(lambda: archive.unlink(missing_ok=True)),
     )

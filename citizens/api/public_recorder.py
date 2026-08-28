@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from citizens.api.downloads import download_headers
 from citizens.config import get_settings
 from citizens.db.models import Assembly, RecorderSession, Recording
 from citizens.db.models.base import utcnow
@@ -199,7 +200,7 @@ def published_report_pdf(recorder_session: RecorderSess, session: DB):
     return Response(
         render_pdf(report, logo_path(), organization_name()),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=download_headers(filename),
     )
 
 
