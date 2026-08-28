@@ -4,6 +4,18 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Deploys now actually reach your browser — 2026-08-28 (v0.6.0-beta.11)
+
+- **The organizer interface could keep showing the previous build for an hour
+  after an update.** Nextcloud's app proxy adds an hour of browser caching to
+  anything that does not set its own rule, and the interface files are served
+  from addresses that never change — so nothing told the browser a new version
+  existed. The recorder page never had this problem because it stamps a version
+  onto its files; the organizer interface never got the same treatment.
+  It does now: the browser checks for a new build on every load, and still
+  reuses the file when nothing changed.
+
+
 ### Wrong report on a phone, Vosk crash, Settings polish — 2026-08-28 (v0.6.0-beta.10)
 
 - **A phone could download another assembly's report.** Not a mistake on your

@@ -36,6 +36,26 @@ from citizens.storage.paths import db_path, ensure_storage_layout
 log = get_logger(__name__)
 
 
+class _RevalidatedStatic(StaticFiles):
+    """Static assets that the browser must revalidate.
+
+    AppAPI's proxy stamps `Cache-Control: private, max-age=3600` on any
+    non-JSON response that sets none of its own, and the organizer bundle is
+    served from a URL that never changes. The result: after every deploy the
+    UI could serve the PREVIOUS build for an hour, with no way for the browser
+    to know. (The recorder page dodges this by versioning its asset URLs.)
+
+    `no-cache` does not mean "do not cache": the browser keeps the file and
+    revalidates, and StaticFiles already sends ETag/Last-Modified, so an
+    unchanged bundle costs a 304 instead of 200 KB.
+    """
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
+
 async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
     try:
         if enabled:
@@ -66,7 +86,8 @@ async def lifespan(app: FastAPI):
         log.error("missing_required_environment", variables=missing)
     configure_database(sqlite_url(db_path(settings.app_persistent_storage)))
     run_migrations(sqlite_url(db_path(settings.app_persistent_storage)))
-    set_handlers(app, enabled_handler)
+    # static dirs are mounted in create_app instead, with cache headers
+    set_handlers(app, enabled_handler, map_app_static=False)
     stop_event = asyncio.Event()
     jobs_task = asyncio.create_task(jobs_run_forever(stop_event))
     LIVE_CAPTIONS.set_loop(asyncio.get_running_loop())
@@ -110,9 +131,20 @@ def create_app(with_auth: bool = True) -> FastAPI:
     app.include_router(reports_router, prefix="/api/v1")
     app.include_router(files_router, prefix="/api/v1")
     app.include_router(recorder_page_router)
-    recorder_static = Path(__file__).resolve().parent.parent / "recorder_static"
+
+    root = Path(__file__).resolve().parent.parent
+    recorder_static = root / "recorder_static"
     if recorder_static.is_dir():
-        app.mount("/recorder/static", StaticFiles(directory=recorder_static), name="recorder-static")
+        app.mount(
+            "/recorder/static", _RevalidatedStatic(directory=recorder_static),
+            name="recorder-static",
+        )
+    # We mount these ourselves (set_handlers is told map_app_static=False) so
+    # they carry a Cache-Control — see _RevalidatedStatic.
+    for name in ("js", "css", "img", "l10n"):
+        directory = root / name
+        if directory.is_dir():
+            app.mount(f"/{name}", _RevalidatedStatic(directory=directory), name=name)
     return app
 
 

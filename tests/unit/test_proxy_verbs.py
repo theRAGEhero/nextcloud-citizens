@@ -125,3 +125,29 @@ def test_every_download_refuses_to_be_cached(routes):
         "these downloads do not set Cache-Control, so the proxy will cache them "
         f"for an hour: {missing}"
     )
+
+
+def test_the_ui_bundle_is_revalidated_not_cached_for_an_hour():
+    """The organizer bundle is served from a URL that never changes, and the
+    proxy stamps `private, max-age=3600` on anything that sets no
+    Cache-Control. That meant every deploy could serve the PREVIOUS build for
+    an hour, with the browser never asking.
+
+    Checked at the mount, because there is no request-level place to notice it.
+    """
+    import inspect
+
+    from citizens import main
+
+    source = inspect.getsource(main.create_app)
+    for directory in ("js", "css", "img"):
+        assert f'"{directory}"' in source, f"{directory}/ is no longer mounted here"
+    assert "_RevalidatedStatic" in source, (
+        "static assets must be served with a Cache-Control, or the proxy adds "
+        "its own hour and deploys stop reaching the browser"
+    )
+    assert "map_app_static=False" in inspect.getsource(main.lifespan), (
+        "nc_py_api would otherwise mount the same directories without a "
+        "Cache-Control, and its mount could win"
+    )
+    assert "no-cache" in inspect.getsource(main._RevalidatedStatic.file_response)
