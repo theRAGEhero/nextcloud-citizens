@@ -74,7 +74,7 @@ pipeline is tested end to end, but automatic retention (scheduled deletion of au
 and an in-app participant consent notice are still to come. Organizers running real
 assemblies should have a privacy notice and a retention practice of their own.
 	]]></description>
-	<version>0.6.0-beta.8</version>
+	<version>0.6.0-beta.9</version>
 	<licence>AGPL-3.0-or-later</licence>
 	<author mail="philip@decentsoftwa.re">Philip</author>
 	<documentation>
@@ -102,7 +102,7 @@ assemblies should have a privacy notice and a retention practice of their own.
 		<docker-install>
 			<registry>ghcr.io</registry>
 			<image>theragehero/citizens</image>
-			<image-tag>0.6.0-beta.8</image-tag>
+			<image-tag>0.6.0-beta.9</image-tag>
 		</docker-install>
 		<!-- Route regexes are matched against the request path WITHOUT a
 		     leading slash on AppAPI <= 33 and WITH one on 34+; the escaped

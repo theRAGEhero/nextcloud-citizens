@@ -96,9 +96,30 @@ def data_handling_summary() -> dict:
     return summary
 
 
-def vosk_language_models(store: "ConfigStore") -> dict[str, str]:
-    """Language code -> model path on the Vosk server. Never raises: a corrupt
-    value must not stop transcription, it just falls back to the default."""
+# where scripts/vosk-up.sh mounts the model directory inside the server
+VOSK_MODEL_DIR = "/models"
+
+
+def vosk_model_path(name: str) -> str:
+    """Model NAME to a path the server can open.
+
+    Settings holds a name (`vosk-model-small-it-0.22`) so switching model is
+    editing one string. A value that already looks like a path is passed
+    through, for a server whose models are laid out differently.
+    """
+    name = (name or "").strip()
+    if not name:
+        return ""
+    return name if name.startswith("/") else f"{VOSK_MODEL_DIR}/{name}"
+
+
+def vosk_language_models(store: "ConfigStore") -> dict[str, dict[str, str]]:
+    """Language code -> {"live": name, "final": name}.
+
+    Never raises: a corrupt value must not stop transcription, it just falls
+    back to the server default. The pre-0.6.0-beta.9 format stored one string
+    per language; that is still read, meaning both live and final.
+    """
     raw = get_setting(store, "vosk_language_models").strip()
     if not raw:
         return {}
@@ -109,24 +130,40 @@ def vosk_language_models(store: "ConfigStore") -> dict[str, str]:
         return {}
     if not isinstance(parsed, dict):
         return {}
-    return {
-        str(key).strip().lower(): str(value).strip()
-        for key, value in parsed.items()
-        if str(value).strip()
-    }
+    models: dict[str, dict[str, str]] = {}
+    for key, value in parsed.items():
+        code = str(key).strip().lower()
+        if not code:
+            continue
+        if isinstance(value, str):  # legacy: one model served both
+            live = final = value.strip()
+        elif isinstance(value, dict):
+            live = str(value.get("live", "")).strip()
+            final = str(value.get("final", "")).strip()
+        else:
+            continue
+        # a blank final reuses the live model, so a half-filled row still works
+        final = final or live
+        live = live or final
+        if live or final:
+            models[code] = {"live": live, "final": final}
+    return models
 
 
-def vosk_model_for(store: "ConfigStore", language: str) -> str:
+def vosk_model_for(store: "ConfigStore", language: str, kind: str = "final") -> str:
     """Model path for this session's language, or "" to use the server default.
 
-    `it-IT` and `it` are the same language here — assemblies store a plain code
+    `kind` is "live" for provisional captions and "final" for the canonical
+    transcript — a fast model can serve one and an accurate one the other.
+    `it-IT` and `it` are the same language here: assemblies store a plain code
     today, but a regional one must not silently miss its model.
     """
     models = vosk_language_models(store)
     if not models:
         return ""
     code = (language or "").strip().lower()
-    return models.get(code) or models.get(code.split("-")[0], "")
+    entry = models.get(code) or models.get(code.split("-")[0]) or {}
+    return vosk_model_path(entry.get(kind, ""))
 
 
 def stt_is_hosted(store: "ConfigStore", provider: str) -> bool:

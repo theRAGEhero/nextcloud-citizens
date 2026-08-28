@@ -490,11 +490,17 @@ class LiveCaptionManager:
 
     @staticmethod
     def _resolve_vosk_model(config: dict, language: str) -> str:
-        """Model path for this language, matching provider_config.vosk_model_for
-        but reading the snapshot rather than the config store."""
+        """Live-caption model path for this language, matching
+        provider_config.vosk_model_for(kind="live") but reading the cached
+        snapshot rather than the config store — no OCS call on the upload path."""
+        from citizens.services.provider_config import vosk_model_path
+
         models = config.get("vosk_models") or {}
         code = (language or "").strip().lower()
-        return models.get(code) or models.get(code.split("-")[0], "")
+        entry = models.get(code) or models.get(code.split("-")[0]) or {}
+        if isinstance(entry, str):  # legacy snapshot shape
+            return vosk_model_path(entry)
+        return vosk_model_path(entry.get("live", ""))
 
     def feed(self, recording_id: str, data: bytes, config: dict, language: str) -> None:
         """Called from the (threadpool) chunk-upload path. Never raises."""

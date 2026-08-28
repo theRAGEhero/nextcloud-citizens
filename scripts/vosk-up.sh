@@ -2,11 +2,14 @@
 # SPDX-FileCopyrightText: 2026 Philip <philip@decentsoftwa.re>
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Run a self-hosted Vosk speech-to-text server for testing Citizens.
+# Run a self-hosted Vosk speech-to-text server for Citizens.
 #
-# ONE container serves EVERY language: each session names the model it wants in
-# its config frame, and the app maps assembly language -> model path. Adding a
-# language is one line in MODELS below plus one row in Settings.
+# ONE container serves every language: each session names the model it wants,
+# and the app maps assembly language -> model name. Models load on first use and
+# are freed again when idle, so an idle server costs a few MB.
+#
+# This script downloads nothing. Add a language with:
+#     scripts/vosk-model.sh vosk-model-small-de-0.15
 #
 # Vosk has no authentication, so the port is published on 127.0.0.1 only. The
 # app does not use it — it reaches the container by name on the shared Nextcloud
@@ -19,37 +22,27 @@ NETWORK=${VOSK_NETWORK:-nextcloud_nextcloud-network}
 HOST_PORT=${VOSK_HOST_PORT:-2700}
 ROOT=${VOSK_ROOT:-/srv/citizens-vosk}
 MEMORY=${VOSK_MEMORY:-900m}
-
-# language:model-name — small models, enough for testing the pipeline
-MODELS="it:vosk-model-small-it-0.22 en:vosk-model-small-en-us-0.15"
+# one language per assembly, so one model resident is the normal case
+CACHE=${VOSK_MODEL_CACHE:-1}
+IDLE=${VOSK_MODEL_IDLE_SECONDS:-1800}
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 mkdir -p "$ROOT/models"
 
-for entry in $MODELS; do
-    lang=${entry%%:*}
-    name=${entry#*:}
-    target="$ROOT/models/$lang"
-    if [ -d "$target" ] && [ -f "$target/am/final.mdl" ]; then
-        echo "model $lang already present ($name)"
-        continue
-    fi
-    echo "downloading $name for '$lang'..."
-    rm -rf "$target" "$ROOT/models/.tmp"
-    mkdir -p "$ROOT/models/.tmp"
-    curl -fSL --retry 3 -o "$ROOT/models/.tmp/model.zip" \
-        "https://alphacephei.com/vosk/models/${name}.zip"
-    unzip -q "$ROOT/models/.tmp/model.zip" -d "$ROOT/models/.tmp"
-    # the archive contains a single top-level directory named after the model
-    mv "$ROOT/models/.tmp/$name" "$target"
-    rm -rf "$ROOT/models/.tmp"
-    echo "  -> $target"
-done
-
-# our patched server: per-connection model selection and a load cache.
-# See the header of scripts/vosk/asr_server.py for why.
+# our patched server: per-connection model selection, and models freed when
+# idle. See the header of scripts/vosk/asr_server.py for why.
 cp "$SCRIPT_DIR/vosk/asr_server.py" "$ROOT/asr_server.py"
+
+installed=$(find "$ROOT/models" -mindepth 1 -maxdepth 1 -type d | wc -l)
+if [ "$installed" -eq 0 ]; then
+    echo "No models installed yet. Add one before recording, for example:"
+    echo "  scripts/vosk-model.sh vosk-model-small-it-0.22"
+    echo
+fi
+# any installed model is a usable default for a session that names none
+DEFAULT_MODEL=$(find "$ROOT/models" -mindepth 1 -maxdepth 1 -type d | sort | head -1)
+DEFAULT_MODEL=${DEFAULT_MODEL:+/models/$(basename "$DEFAULT_MODEL")}
 
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 docker run -d \
@@ -61,16 +54,23 @@ docker run -d \
     -v "$ROOT/models:/models:ro" \
     -v "$ROOT/asr_server.py:/opt/asr_server.py:ro" \
     -e VOSK_SAMPLE_RATE=16000 \
+    -e VOSK_MODEL_CACHE="$CACHE" \
+    -e VOSK_MODEL_IDLE_SECONDS="$IDLE" \
     "$IMAGE" \
-    python3 /opt/asr_server.py /models/en >/dev/null
+    python3 /opt/asr_server.py "${DEFAULT_MODEL:-/models/none}" >/dev/null
 
+echo "Vosk is running as '$CONTAINER' on network $NETWORK."
+echo "  docker logs -f $CONTAINER"
 echo
-echo "Vosk is starting as '$CONTAINER' on network $NETWORK."
-echo "Watch it load:   docker logs -f $CONTAINER"
+echo "Settings -> Audio -> Vosk:"
+echo "  Server URL   ws://${CONTAINER}:2700"
+echo "  Models installed:"
+if [ "$installed" -gt 0 ]; then
+    for d in "$ROOT/models"/*; do
+        [ -d "$d" ] && echo "    $(basename "$d")"
+    done
+else
+    echo "    (none yet — scripts/vosk-model.sh <model-name>)"
+fi
 echo
-echo "Settings -> Speech to text -> Vosk:"
-echo "  Server URL          ws://${CONTAINER}:2700"
-echo "  Model for Italian   /models/it"
-echo "  Model for English   /models/en"
-echo
-echo "(from this host, for manual testing only: ws://127.0.0.1:${HOST_PORT})"
+echo "Models load on first use and are freed after ${IDLE}s idle (cache: $CACHE)."

@@ -91,8 +91,11 @@ def transcribe_recording(
         if not url:
             raise TranscriptionError("No Vosk server URL configured", permanent=True)
         # one server can hold a model per language; pick this assembly's
-        model = provider_config.vosk_model_for(store, language) or provider_config.get_setting(
-            store, "vosk_batch_model"
+        # canonical-transcript model (captions may use a different one)
+        model = provider_config.vosk_model_for(
+            store, language, "final"
+        ) or provider_config.vosk_model_path(
+            provider_config.get_setting(store, "vosk_batch_model")
         )
         log.info("vosk_model_selected", language=language, model=model or "(server default)")
         normalized = vosk_provider.transcribe_file(

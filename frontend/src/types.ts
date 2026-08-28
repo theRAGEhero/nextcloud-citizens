@@ -145,9 +145,10 @@ export interface ProvidersSummary {
 		whisper_key_hint: string
 		whisper_base_url: string
 		whisper_batch_model: string
+		whisper_live_model: string
 		vosk_url: string
-		/** language code -> model path on the Vosk server */
-		vosk_language_models: Record<string, string>
+		/** language code -> model NAME for captions and for the final transcript */
+		vosk_language_models: Record<string, { live: string; final: string }>
 		vosk_batch_model: string
 	}
 	analysis: {

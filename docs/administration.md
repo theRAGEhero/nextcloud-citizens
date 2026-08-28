@@ -54,23 +54,36 @@ Vosk needs **a separate model per language**, but one server can hold several:
 each recording names the model it wants, and the language you set on an assembly
 chooses it.
 
-`scripts/vosk-up.sh` starts a server with Italian and English small models and
-prints the values to paste into Settings. Adding a language is one more entry in
-the script's model table plus one row in Settings — no second container. Models
-are downloaded once to `/srv/citizens-vosk/models`, and `scripts/vosk-down.sh`
-stops the server (`--purge` also removes the models).
-
-In Settings → Speech to text → Vosk, set the server URL and one row per
-language, mapping a language code to the model path *on the server*:
+`scripts/vosk-up.sh` starts the server. It downloads nothing: fetch a model when
+you know you need that language, which you can do the day before a session.
 
 ```
-Server URL          ws://citizens-vosk:2700
-it                  /models/it
-en                  /models/en
+scripts/vosk-model.sh --list                       what is installed
+scripts/vosk-model.sh vosk-model-small-de-0.15     add German
+scripts/vosk-down.sh                               stop (--purge deletes models)
 ```
 
-A language with no row uses whatever model the server started with, so it still
-transcribes rather than failing.
+In Settings → Audio → Vosk, set the server URL and, for each language, the
+**model name** — switching model is editing that name:
+
+```
+Server URL   ws://citizens-vosk:2700
+
+             Live captions                  Final transcript
+Italiano     vosk-model-small-it-0.22       vosk-model-small-it-0.22
+English      vosk-model-small-en-us-0.15    vosk-model-small-en-us-0.15
+```
+
+A blank final model reuses the live one, and a language with no row uses
+whatever model the server started with — so a half-filled table still
+transcribes rather than failing. The two columns let a fast model produce
+captions while a more accurate one produces the transcript; Vosk's large models
+are 1.2–1.9 GB each, so that only pays off on a machine with the memory for it.
+
+**Models load on first use and are freed when idle** (30 minutes by default,
+`VOSK_MODEL_IDLE_SECONDS`), and only one is held at a time (`VOSK_MODEL_CACHE`).
+An assembly uses one language, so an idle server costs a few MB rather than a
+few hundred. A model in use is never unloaded, however long the round runs.
 
 Two things worth knowing. The server must be reachable **from the app
 container**, so use the container name rather than `localhost` — `localhost`
@@ -79,9 +92,9 @@ its port beyond `127.0.0.1`; the app reaches it over the shared Docker network.
 
 The script runs a lightly patched `asr_server.py` (in `scripts/vosk/`): upstream
 switches models process-wide and reloads from disk on every connection, which
-would let two assemblies in different languages take each other's model. The
-patch makes the choice per-connection and caches loaded models. Both small
-models together use about 340 MB.
+would let two assemblies in different languages take each other's model, and it
+never releases a model once loaded. The patch makes the choice per-connection,
+caches loads, and frees idle models. A small model is about 230 MB resident.
 
 **AI analysis.** Any OpenAI-compatible endpoint works: Mistral, OpenAI, or a
 self-hosted server such as Ollama or vLLM. Set the base URL, model and key.

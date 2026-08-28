@@ -5,8 +5,8 @@ import {
 	mdiBrain,
 	mdiCheck,
 	mdiClose,
+	mdiCogOutline,
 	mdiDeleteClockOutline,
-	mdiPlus,
 	mdiImageOutline,
 	mdiMicrophoneOutline,
 } from '@mdi/js'
@@ -35,9 +35,22 @@ const deepgramLiveUrl = ref('')
 const whisperKey = ref('')
 const whisperBaseUrl = ref('')
 const whisperBatchModel = ref('')
+const whisperLiveModel = ref('')
 const voskUrl = ref('')
 const voskBatchModel = ref('')
-const voskModels = ref<{ language: string; path: string }[]>([])
+
+// the languages an assembly can be run in (AssemblyWizard.vue). Vosk needs its
+// own model for each, so every one gets a row whether or not it is configured.
+const ASSEMBLY_LANGUAGES: Array<{ code: string; label: string }> = [
+	{ code: 'en', label: 'English' },
+	{ code: 'it', label: 'Italiano' },
+	{ code: 'de', label: 'Deutsch' },
+	{ code: 'fr', label: 'Français' },
+	{ code: 'es', label: 'Español' },
+]
+const voskModels = ref<Record<string, { live: string; final: string }>>(
+	Object.fromEntries(ASSEMBLY_LANGUAGES.map((l) => [l.code, { live: '', final: '' }])),
+)
 
 // every engine produces live captions, each through its own protocol
 const CAPTION_NOTE: Record<SttProvider, string> = {
@@ -57,6 +70,14 @@ const showPrompts = ref(false)
 const logoSet = ref(false)
 const logoVersion = ref(0)
 const testResults = ref<Record<string, { ok: boolean; message: string }>>({})
+
+type Tab = 'audio' | 'ai' | 'general'
+const tab = ref<Tab>('audio')
+const TABS: Array<{ id: Tab; label: string; icon: string }> = [
+	{ id: 'audio', label: 'Audio', icon: mdiMicrophoneOutline },
+	{ id: 'ai', label: 'AI analysis', icon: mdiBrain },
+	{ id: 'general', label: 'General', icon: mdiCogOutline },
+]
 
 function logoUrl(): string {
 	return `${BASE}/api/v1/admin/logo?v=${logoVersion.value}`
@@ -113,10 +134,15 @@ async function reload(): Promise<void> {
 	deepgramLiveUrl.value = summary.value.stt.deepgram_live_url
 	whisperBaseUrl.value = summary.value.stt.whisper_base_url
 	whisperBatchModel.value = summary.value.stt.whisper_batch_model
+	whisperLiveModel.value = summary.value.stt.whisper_live_model ?? ''
 	voskUrl.value = summary.value.stt.vosk_url
 	voskBatchModel.value = summary.value.stt.vosk_batch_model
-	voskModels.value = Object.entries(summary.value.stt.vosk_language_models ?? {}).map(
-		([language, path]) => ({ language, path }),
+	const stored = summary.value.stt.vosk_language_models ?? {}
+	voskModels.value = Object.fromEntries(
+		ASSEMBLY_LANGUAGES.map(({ code }) => [
+			code,
+			{ live: stored[code]?.live ?? '', final: stored[code]?.final ?? '' },
+		]),
 	)
 	analysisBaseUrl.value = summary.value.analysis.base_url
 	analysisModel.value = summary.value.analysis.model
@@ -150,13 +176,19 @@ async function save(): Promise<void> {
 			deepgram_live_url: deepgramLiveUrl.value.trim(),
 			whisper_base_url: whisperBaseUrl.value.trim(),
 			whisper_batch_model: whisperBatchModel.value.trim(),
+			whisper_live_model: whisperLiveModel.value.trim(),
 			vosk_url: voskUrl.value.trim(),
 			vosk_batch_model: voskBatchModel.value.trim(),
 			vosk_language_models: JSON.stringify(
 				Object.fromEntries(
-					voskModels.value
-						.filter((row) => row.language.trim() && row.path.trim())
-						.map((row) => [row.language.trim().toLowerCase(), row.path.trim()]),
+					Object.entries(voskModels.value)
+						.map(([code, row]) => [
+							code,
+							{ live: row.live.trim(), final: row.final.trim() },
+						])
+						// a language with neither model set is simply not configured
+						.filter(([, row]) => (row as { live: string; final: string }).live
+							|| (row as { live: string; final: string }).final),
 				),
 			),
 			analysis_base_url: analysisBaseUrl.value.trim(),
@@ -236,7 +268,21 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 		<CzSkeleton v-if="!summary && !error" :rows="3" :height="120" />
 
 		<template v-if="summary">
-			<div class="cz-card" style="margin-top: 18px">
+			<div class="cz-tabs" role="tablist">
+				<button
+					v-for="item in TABS"
+					:key="item.id"
+					class="cz-tab"
+					:class="{ 'cz-tab--active': tab === item.id }"
+					role="tab"
+					:aria-selected="tab === item.id"
+					@click="tab = item.id">
+					<SvgIcon :path="item.icon" :size="17" />
+					{{ item.label }}
+				</button>
+			</div>
+
+			<div v-show="tab === 'audio'" class="cz-card">
 				<div class="cz-row" style="margin-bottom: 14px">
 					<SvgIcon :path="mdiMicrophoneOutline" :size="22" style="color: var(--cz-primary)" />
 					<h3>Transcription</h3>
@@ -343,11 +389,19 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 						</span>
 					</div>
 					<div class="cz-field">
-						<label>Model</label>
+						<label>Final transcription model</label>
 						<input v-model="whisperBatchModel" type="text" placeholder="whisper-1" />
 						<span class="cz-muted" style="font-size: 12.5px">
 							A model name containing “diarize” (e.g. gpt-4o-transcribe-diarize) is
 							requested in diarized mode and returns speaker labels.
+						</span>
+					</div>
+					<div class="cz-field">
+						<label>Live transcription model</label>
+						<input v-model="whisperLiveModel" type="text" placeholder="same as final" />
+						<span class="cz-muted" style="font-size: 12.5px">
+							Optional. Captions re-transcribe a rolling window every few seconds, so a
+							smaller model keeps up more cheaply. Leave empty to reuse the final model.
 						</span>
 					</div>
 					<div class="cz-field">
@@ -397,36 +451,49 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 					</div>
 					<div class="cz-field" style="grid-column: span 2">
 						<label>Model for each language</label>
-						<span class="cz-muted" style="font-size: 12.5px; margin-bottom: 8px">
-							Vosk needs a separate model per language, and one server can hold several.
-							The language you choose for an assembly selects the model. A language with
-							no entry here uses whatever model the server started with.
+						<span class="cz-muted" style="font-size: 12.5px; margin-bottom: 10px">
+							Vosk needs its own model per language, and one server holds several. The
+							language you choose for an assembly picks the model. Type the model
+							<strong>name</strong> — switching model is editing this name. Leave a
+							language empty until you need it; download a model with
+							<code>scripts/vosk-model.sh &lt;name&gt;</code>.
 						</span>
-						<div v-for="(row, index) in voskModels" :key="index" class="cz-row" style="flex-wrap: nowrap; margin-bottom: 6px">
+						<div class="cz-row" style="flex-wrap: nowrap; gap: 8px; margin-bottom: 4px">
+							<span class="cz-muted" style="width: 78px; font-size: 12px; font-weight: 600">Language</span>
+							<span class="cz-muted" style="flex: 1; font-size: 12px; font-weight: 600">Live captions (provisional)</span>
+							<span class="cz-muted" style="flex: 1; font-size: 12px; font-weight: 600">Final transcript (canonical)</span>
+						</div>
+						<div
+							v-for="lang in ASSEMBLY_LANGUAGES"
+							:key="lang.code"
+							class="cz-row"
+							style="flex-wrap: nowrap; gap: 8px; margin-bottom: 6px">
+							<span style="width: 78px; font-size: 13.5px">{{ lang.label }}</span>
 							<input
-								v-model="row.language"
-								type="text"
-								style="width: 90px"
-								placeholder="it"
-								aria-label="Language code" />
-							<input
-								v-model="row.path"
+								v-model="voskModels[lang.code].live"
 								type="text"
 								style="flex: 1"
-								placeholder="/models/it"
-								aria-label="Model path on the Vosk server" />
-							<CzButton small :icon="mdiClose" title="Remove" @click="voskModels.splice(index, 1)" />
+								placeholder="not configured"
+								:aria-label="`Live caption model for ${lang.label}`" />
+							<input
+								v-model="voskModels[lang.code].final"
+								type="text"
+								style="flex: 1"
+								placeholder="same as live"
+								:aria-label="`Final transcript model for ${lang.label}`" />
 						</div>
-						<CzButton small :icon="mdiPlus" @click="voskModels.push({ language: '', path: '' })">
-							Add a language
-						</CzButton>
+						<span class="cz-muted" style="font-size: 12.5px; margin-top: 6px">
+							A blank final model reuses the live one. A language left entirely blank falls
+							back to whatever model the server started with, so a half-filled table never
+							stops a recording being transcribed.
+						</span>
 					</div>
 					<div class="cz-field">
 						<label>Model label (optional)</label>
 						<input v-model="voskBatchModel" type="text" placeholder="vosk-model-small-it-0.22" />
 						<span class="cz-muted" style="font-size: 12.5px">
-							Recorded with the transcript for reference. Used as the model only if the
-							language is not listed above.
+							Recorded with the transcript for reference, and used as the model only for a
+							language with no row above.
 						</span>
 					</div>
 					<div class="cz-field" style="grid-column: span 2">
@@ -449,7 +516,7 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 				</div>
 			</div>
 
-			<div class="cz-card">
+			<div v-show="tab === 'ai'" class="cz-card">
 				<div class="cz-row" style="margin-bottom: 4px">
 					<SvgIcon :path="mdiBrain" :size="22" style="color: var(--cz-primary)" />
 					<h3>AI analysis</h3>
@@ -515,7 +582,7 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 				</div>
 			</div>
 
-			<div class="cz-card">
+			<div v-show="tab === 'general'" class="cz-card">
 				<div class="cz-row" style="margin-bottom: 4px">
 					<SvgIcon :path="mdiDeleteClockOutline" :size="22" style="color: var(--cz-primary)" />
 					<h3>Audio retention</h3>
@@ -540,7 +607,7 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 				</div>
 			</div>
 
-			<div class="cz-card">
+			<div v-show="tab === 'general'" class="cz-card">
 				<div class="cz-row" style="margin-bottom: 4px">
 					<SvgIcon :path="mdiImageOutline" :size="22" style="color: var(--cz-primary)" />
 					<h3>Organization</h3>

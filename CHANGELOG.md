@@ -4,6 +4,27 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Settings in tabs, and Vosk models by name — 2026-08-28 (v0.6.0-beta.9)
+
+- **Settings is now three tabs** — Audio, AI analysis, General — instead of one
+  long scroll. One Save still saves everything, and switching tabs never loses
+  what you typed.
+- **Every engine now separates the two jobs clearly**: "Live captions
+  (provisional)" and "Final transcript (canonical)", with the model for each.
+  Whisper gained its live-model field, which the server already supported but
+  the page never showed.
+- **Vosk lists all five assembly languages**, each with a live and a final
+  model. A blank final reuses the live one; a language you have not set up uses
+  the server default, so a half-filled table never blocks a transcript.
+- **Vosk models are named, not paths.** Settings holds
+  `vosk-model-small-it-0.22`, so switching model is editing that name.
+- **Models are downloaded only when you want them** — `scripts/vosk-model.sh
+  <name>` — and the server now **frees a model once it has been idle**, keeping
+  one at a time. An assembly uses one language, so an idle server costs a few MB
+  instead of holding a few hundred overnight. A model in use is never unloaded,
+  however long the round runs.
+
+
 ### A Vosk model per language — 2026-08-27 (v0.6.0-beta.8)
 
 - **Vosk can now use a different model for each language**, which is how Vosk

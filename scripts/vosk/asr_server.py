@@ -22,14 +22,26 @@ import json
 import logging
 import os
 import sys
+import time
+from collections import OrderedDict
 
 import websockets
 from vosk import KaldiRecognizer, Model, SpkModel
 
 # path -> loaded Model. Kaldi models are read-only once built and safe to share
 # across recognizers, so one load serves every connection using that language.
-_MODEL_CACHE = {}
+#
+# Bounded and idle-evicted: an assembly uses one language, and the next one may
+# be days later in another. Without this a model loaded once sat in memory
+# forever — ~300 MB for a small model, on a host that does not have it spare.
+_MODEL_CACHE = OrderedDict()
+_MODEL_USERS = {}  # path -> live connection count; never evict one in use
 _MODEL_LOCK = asyncio.Lock()
+
+CACHE_SIZE = int(os.environ.get("VOSK_MODEL_CACHE", 1))
+IDLE_SECONDS = float(os.environ.get("VOSK_MODEL_IDLE_SECONDS", 1800))
+SWEEP_SECONDS = 60.0
+_IDLE_SINCE = {}  # path -> when its last connection closed
 
 
 async def load_model(path, loop):
@@ -40,11 +52,63 @@ async def load_model(path, loop):
     instead of starting several.
     """
     async with _MODEL_LOCK:
-        if path not in _MODEL_CACHE:
+        if path in _MODEL_CACHE:
+            _MODEL_CACHE.move_to_end(path)
+        else:
             logging.info("Loading model %s", path)
             _MODEL_CACHE[path] = await loop.run_in_executor(None, Model, path)
             logging.info("Loaded model %s", path)
+            _evict_locked(keep=path)
+        _MODEL_USERS[path] = _MODEL_USERS.get(path, 0) + 1
+        _IDLE_SINCE.pop(path, None)
         return _MODEL_CACHE[path]
+
+
+async def release_model(path):
+    """One connection finished with this model."""
+    if not path:
+        return
+    async with _MODEL_LOCK:
+        remaining = _MODEL_USERS.get(path, 1) - 1
+        if remaining > 0:
+            _MODEL_USERS[path] = remaining
+        else:
+            _MODEL_USERS.pop(path, None)
+            _IDLE_SINCE[path] = time.monotonic()
+
+
+def _evict_locked(keep=None):
+    """Drop least-recently-used models above the cap. Call with the lock held.
+
+    Only models with no live connection are dropped, so a long round cannot
+    have its model pulled while it is still recording — that would reload it
+    into a SECOND copy and double memory instead of saving any. Dropping the
+    reference is safe regardless: a recognizer holds its own, so Python frees
+    the memory when the last connection using it closes.
+    """
+    for path in list(_MODEL_CACHE):
+        if len(_MODEL_CACHE) <= max(CACHE_SIZE, 1):
+            return
+        if path == keep or _MODEL_USERS.get(path):
+            continue
+        _MODEL_CACHE.pop(path, None)
+        _IDLE_SINCE.pop(path, None)
+        logging.info("Unloaded model %s (cache limit %d)", path, CACHE_SIZE)
+
+
+async def sweep_idle_models():
+    """Free a model nobody has used for a while, so memory returns to baseline
+    between assemblies instead of holding one overnight."""
+    while True:
+        await asyncio.sleep(SWEEP_SECONDS)
+        now = time.monotonic()
+        async with _MODEL_LOCK:
+            for path, since in list(_IDLE_SINCE.items()):
+                if _MODEL_USERS.get(path) or now - since < IDLE_SECONDS:
+                    continue
+                _MODEL_CACHE.pop(path, None)
+                _IDLE_SINCE.pop(path, None)
+                logging.info("Unloaded idle model %s", path)
 
 
 def process_chunk(rec, message):
@@ -70,50 +134,65 @@ async def recognize(websocket, path):
     show_words = args.show_words
     max_alternatives = args.max_alternatives
     # per-connection, so another session cannot change this one's language
-    conn_model = model
+    conn_model = None
+    conn_model_path = None
     model_changed = False
 
     logging.info('Connection from %s', websocket.remote_address)
 
-    while True:
+    try:
+        while True:
 
-        message = await websocket.recv()
+            message = await websocket.recv()
 
-        # Load configuration if provided
-        if isinstance(message, str) and 'config' in message:
-            jobj = json.loads(message)['config']
-            logging.info("Config %s", jobj)
-            if 'phrase_list' in jobj:
-                phrase_list = jobj['phrase_list']
-            if 'sample_rate' in jobj:
-                sample_rate = float(jobj['sample_rate'])
-            if 'model' in jobj:
-                conn_model = await load_model(jobj['model'], loop)
-                model_changed = True
-            if 'words' in jobj:
-                show_words = bool(jobj['words'])
-            if 'max_alternatives' in jobj:
-                max_alternatives = int(jobj['max_alternatives'])
-            continue
+            # Load configuration if provided
+            if isinstance(message, str) and 'config' in message:
+                jobj = json.loads(message)['config']
+                logging.info("Config %s", jobj)
+                if 'phrase_list' in jobj:
+                    phrase_list = jobj['phrase_list']
+                if 'sample_rate' in jobj:
+                    sample_rate = float(jobj['sample_rate'])
+                if 'model' in jobj:
+                    previous = conn_model_path
+                    conn_model_path = jobj['model']
+                    conn_model = await load_model(conn_model_path, loop)
+                    if previous and previous != conn_model_path:
+                        await release_model(previous)
+                    model_changed = True
+                if 'words' in jobj:
+                    show_words = bool(jobj['words'])
+                if 'max_alternatives' in jobj:
+                    max_alternatives = int(jobj['max_alternatives'])
+                continue
 
-        # Create the recognizer, word list is temporary disabled since not every model supports it
-        if not rec or model_changed:
-            model_changed = False
-            if phrase_list:
-                rec = KaldiRecognizer(
-                    conn_model, sample_rate, json.dumps(phrase_list, ensure_ascii=False)
-                )
-            else:
-                rec = KaldiRecognizer(conn_model, sample_rate)
-            rec.SetWords(show_words)
-            rec.SetMaxAlternatives(max_alternatives)
-            if spk_model:
-                rec.SetSpkModel(spk_model)
+            # Create the recognizer, word list is temporary disabled since not every model supports it
+            if not rec or model_changed:
+                model_changed = False
+                if conn_model is None:
+                    # no model named: fall back to the server's default, loaded
+                    # on demand like any other so nothing is pinned at startup
+                    conn_model_path = args.model_path
+                    conn_model = await load_model(conn_model_path, loop)
+                if phrase_list:
+                    rec = KaldiRecognizer(
+                        conn_model, sample_rate, json.dumps(phrase_list, ensure_ascii=False)
+                    )
+                else:
+                    rec = KaldiRecognizer(conn_model, sample_rate)
+                rec.SetWords(show_words)
+                rec.SetMaxAlternatives(max_alternatives)
+                if spk_model:
+                    rec.SetSpkModel(spk_model)
 
-        response, stop = await loop.run_in_executor(pool, process_chunk, rec, message)
-        await websocket.send(response)
-        if stop:
-            break
+            response, stop = await loop.run_in_executor(pool, process_chunk, rec, message)
+            await websocket.send(response)
+            if stop:
+                break
+    finally:
+        # must run however the connection ends — a dropped phone must not leave
+        # the model pinned in memory forever
+        await release_model(conn_model_path)
 
 
 async def start():
@@ -138,15 +217,25 @@ async def start():
     if len(sys.argv) > 1:
         args.model_path = sys.argv[1]
 
-    loop = asyncio.get_running_loop()
-    # the default, used by any session that does not name a model
-    model = await load_model(args.model_path, loop)
+    # Nothing is loaded at startup: an assembly uses one language, and the next
+    # may be days away in another. Models load on first use and are freed when
+    # idle, so an idle server costs a few MB rather than a few hundred.
+    model = None
+    if not os.path.isdir(args.model_path):
+        logging.warning(
+            "Default model directory %s does not exist — sessions that do not "
+            "name a model will fail", args.model_path,
+        )
     spk_model = SpkModel(args.spk_model_path) if args.spk_model_path else None
 
     pool = concurrent.futures.ThreadPoolExecutor((os.cpu_count() or 1))
 
     async with websockets.serve(recognize, args.interface, args.port):
-        logging.info("Listening on %s:%d", args.interface, args.port)
+        logging.info(
+            "Listening on %s:%d (models load on demand, cache %d, idle unload %ds)",
+            args.interface, args.port, CACHE_SIZE, int(IDLE_SECONDS),
+        )
+        asyncio.create_task(sweep_idle_models())
         await asyncio.Future()
 
 

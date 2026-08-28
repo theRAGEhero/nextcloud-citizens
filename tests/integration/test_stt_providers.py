@@ -175,24 +175,45 @@ def test_vosk_model_is_chosen_by_the_session_language():
     """One Vosk server holds a model per language; the assembly's language
     selects it. Without this every language would hit the same model and the
     transcript would be nonsense for all but one of them."""
-    store = _VoskStore('{"it": "/models/it", "en": "/models/en"}')
-    assert provider_config.vosk_model_for(store, "it") == "/models/it"
-    assert provider_config.vosk_model_for(store, "en") == "/models/en"
+    store = _VoskStore(
+        '{"it": {"live": "small-it", "final": "big-it"},'
+        ' "en": {"live": "small-en", "final": "big-en"}}'
+    )
+    # captions and the canonical transcript can use different models
+    assert provider_config.vosk_model_for(store, "it", "live") == "/models/small-it"
+    assert provider_config.vosk_model_for(store, "it", "final") == "/models/big-it"
+    assert provider_config.vosk_model_for(store, "en", "live") == "/models/small-en"
     # a regional code must still find its language
-    assert provider_config.vosk_model_for(store, "it-IT") == "/models/it"
-    assert provider_config.vosk_model_for(store, "EN") == "/models/en"
+    assert provider_config.vosk_model_for(store, "it-IT", "final") == "/models/big-it"
+    assert provider_config.vosk_model_for(store, "EN", "final") == "/models/big-en"
     # an unmapped language sends no model, so the server default still works
-    assert provider_config.vosk_model_for(store, "de") == ""
+    assert provider_config.vosk_model_for(store, "de", "final") == ""
 
 
-def test_vosk_model_map_survives_bad_configuration():
-    """A corrupt map must degrade to the server default, never stop a recording
-    from being transcribed."""
-    assert provider_config.vosk_model_for(_VoskStore(None), "it") == ""
-    assert provider_config.vosk_model_for(_VoskStore(""), "it") == ""
-    assert provider_config.vosk_model_for(_VoskStore("not json"), "it") == ""
-    assert provider_config.vosk_model_for(_VoskStore('["a", "b"]'), "it") == ""
-    assert provider_config.vosk_model_for(_VoskStore('{"it": ""}'), "it") == ""
+def test_vosk_settings_hold_a_name_not_a_path():
+    """Switching model should be editing one name, but an explicit path must
+    still work for a server laid out differently."""
+    assert provider_config.vosk_model_path("vosk-model-small-it-0.22") == (
+        "/models/vosk-model-small-it-0.22"
+    )
+    assert provider_config.vosk_model_path("/opt/custom/it") == "/opt/custom/it"
+    assert provider_config.vosk_model_path("  ") == ""
+
+
+def test_vosk_blank_final_reuses_the_live_model():
+    """A half-filled row must not stop a recording being transcribed."""
+    store = _VoskStore('{"it": {"live": "small-it", "final": ""}}')
+    assert provider_config.vosk_model_for(store, "it", "final") == "/models/small-it"
+    # and the other way round
+    store = _VoskStore('{"it": {"live": "", "final": "big-it"}}')
+    assert provider_config.vosk_model_for(store, "it", "live") == "/models/big-it"
+
+
+def test_vosk_reads_the_old_single_model_format():
+    """Installs configured before live/final were split keep working."""
+    store = _VoskStore('{"it": "/models/it"}')
+    assert provider_config.vosk_model_for(store, "it", "live") == "/models/it"
+    assert provider_config.vosk_model_for(store, "it", "final") == "/models/it"
 
 
 def test_live_captions_pick_the_model_for_the_table_language():
@@ -200,11 +221,16 @@ def test_live_captions_pick_the_model_for_the_table_language():
     with the batch resolver — and must never make an OCS call per chunk."""
     from citizens.services.live_captions import LIVE_CAPTIONS
 
-    snapshot = {"vosk_models": {"it": "/models/it", "en": "/models/en"}}
-    assert LIVE_CAPTIONS._resolve_vosk_model(snapshot, "it") == "/models/it"
-    assert LIVE_CAPTIONS._resolve_vosk_model(snapshot, "it-IT") == "/models/it"
+    snapshot = {"vosk_models": {"it": {"live": "small-it", "final": "big-it"}}}
+    # captions must take the LIVE model, never the final one
+    assert LIVE_CAPTIONS._resolve_vosk_model(snapshot, "it") == "/models/small-it"
+    assert LIVE_CAPTIONS._resolve_vosk_model(snapshot, "it-IT") == "/models/small-it"
     assert LIVE_CAPTIONS._resolve_vosk_model(snapshot, "de") == ""
     assert LIVE_CAPTIONS._resolve_vosk_model({}, "it") == ""
+    # legacy snapshot shape
+    assert LIVE_CAPTIONS._resolve_vosk_model({"vosk_models": {"it": "/models/it"}}, "it") == (
+        "/models/it"
+    )
 
 
 def test_vosk_client_sends_the_model_it_was_given():
