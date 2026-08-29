@@ -4,6 +4,28 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Live captions now match the transcript — 2026-08-29
+
+- **The captions on the phone disagreed with the final transcript even when
+  both used the same model.** Not a model difference and not the audio: the
+  live path was handing the recognizer ragged pieces of audio — a full frame
+  then a 6-millisecond sliver, over and over — because it cut each block of
+  decoded sound on its own instead of carrying the leftover into the next one.
+  Vosk decides where one sentence ends on every piece it receives, so the
+  ragged feed moved those boundaries and changed the words beside them,
+  usually the harder ones: *livorno* became *limone*, *catalunya* became
+  *taluno*. Measured on 800 seconds of a real assembly, the captions and the
+  archived transcript agreed on 92.3% of words. They now agree on 98.9% —
+  which is as close as it goes, because the recognizer is not perfectly
+  repeatable: the identical audio sent twice agrees with itself 99.3%.
+- **Captions that fall behind now say so.** When a transcription engine could
+  not keep up, audio was quietly discarded and nothing was written to the log,
+  so a gap in the captions was indistinguishable from a quiet room. The
+  recording itself was never affected — it still isn't — but the loss is now
+  recorded, with how many seconds went missing.
+- Mistral live captions send audio in 480-millisecond pieces, the size Mistral
+  documents, instead of one message per small block.
+
 ### A full room no longer freezes the server — 2026-08-29
 
 - **Ten tables uploading at once brought the whole app to a standstill.** Not

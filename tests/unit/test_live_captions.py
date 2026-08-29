@@ -110,15 +110,74 @@ def test_mistral_session_flushes_pending_text_on_done():
     assert [line["text"] for line in session.lines] == ["hello there"]
 
 
-def test_mistral_append_slices_stay_under_the_api_cap():
+def test_mistral_appends_match_the_documented_chunk_duration():
     from citizens.services import live_audio
     from citizens.services.live_captions import MistralSession
 
-    # the API rejects an append whose decoded audio exceeds 256 KiB
+    # Mistral's streaming example uses chunk_duration_ms=480
+    assert MistralSession.APPEND_SECONDS == 0.48
+    framer = live_audio.Framer(MistralSession.APPEND_SECONDS)
     pcm = b"\x00" * (live_audio.BYTES_PER_SECOND * 30)
-    slices = live_audio.frames(pcm, MistralSession.APPEND_SECONDS)
-    assert all(len(chunk) <= 256 * 1024 for chunk in slices)
+    slices = framer.push(pcm) + framer.flush()
+    assert {len(chunk) for chunk in slices[:-1]} == {framer.size}
     assert sum(len(chunk) for chunk in slices) == len(pcm)
+
+
+def test_framer_never_splits_a_sample_and_loses_nothing():
+    from citizens.services import live_audio
+
+    framer = live_audio.Framer(0.2)
+    pcm = b"\x01\x02" * 8000
+    chunks = framer.push(pcm) + framer.flush()
+    assert all(len(chunk) % 2 == 0 for chunk in chunks)
+    assert b"".join(chunks) == pcm
+
+
+def test_framer_carries_the_remainder_across_reads():
+    """The regression that made live captions disagree with the transcript.
+
+    ffmpeg is read in READ_SIZE blocks, which is not a whole number of frames.
+    Framing each block on its own emitted a full frame then a short one — 8000
+    bytes then 192, over and over — instead of a uniform stream.
+    """
+    from citizens.services import live_audio
+
+    framer = live_audio.Framer(0.2)
+    emitted = []
+    for _ in range(20):
+        emitted += framer.push(b"\x00" * live_audio.READ_SIZE)
+
+    assert {len(frame) for frame in emitted} == {framer.size}, (
+        "frames must be uniform while the stream is running"
+    )
+    tail = framer.flush()
+    assert len(b"".join(emitted + tail)) == 20 * live_audio.READ_SIZE
+
+
+def test_live_framing_matches_the_batch_provider_exactly():
+    """What makes captions and the archived transcript the same text.
+
+    Vosk is deterministic: identical model, identical audio and an identical
+    frame sequence give an identical transcript. The live path only satisfies
+    that last condition if its frames come out the way vosk.py slices a file.
+    """
+    from citizens.providers.transcription import vosk as vosk_provider
+    from citizens.services import live_audio
+    from citizens.services.live_captions import VoskSession
+
+    assert live_audio.Framer(VoskSession.FRAME_SECONDS).size == vosk_provider.FRAME_BYTES
+
+    pcm = bytes(range(256)) * 700  # 179,200 B — not a whole number of frames
+    batch = [
+        pcm[offset : offset + vosk_provider.FRAME_BYTES]
+        for offset in range(0, len(pcm), vosk_provider.FRAME_BYTES)
+    ]
+    framer = live_audio.Framer(VoskSession.FRAME_SECONDS)
+    live = []
+    for offset in range(0, len(pcm), live_audio.READ_SIZE):
+        live += framer.push(pcm[offset : offset + live_audio.READ_SIZE])
+    live += framer.flush()
+    assert live == batch
 
 
 def test_whisper_session_commits_only_new_text_and_drops_hallucinations():
@@ -161,15 +220,6 @@ def test_whisper_session_commits_only_new_text_and_drops_hallucinations():
 
     texts = [line["text"] for line in session.lines]
     assert texts == ["the last bus leaves too early", "we should extend the service"]
-
-
-def test_pcm_frame_helper_never_splits_a_sample():
-    from citizens.services import live_audio
-
-    pcm = b"\x01\x02" * 8000
-    chunks = live_audio.frames(pcm, 0.25)
-    assert all(len(chunk) % 2 == 0 for chunk in chunks)
-    assert b"".join(chunks) == pcm
 
 
 def test_wav_wrapper_is_a_valid_riff_container():

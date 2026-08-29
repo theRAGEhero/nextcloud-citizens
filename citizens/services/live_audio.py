@@ -13,6 +13,7 @@ audio is undecodable, captions stop and the recording is untouched.
 """
 
 import asyncio
+import time
 
 from citizens.logging_setup import get_logger
 
@@ -23,6 +24,9 @@ BYTES_PER_SECOND = SAMPLE_RATE * 2  # s16le mono
 READ_SIZE = 8192
 # a caption engine that stops draining must not grow memory without bound
 MAX_QUEUED_PCM_BYTES = BYTES_PER_SECOND * 120
+# dropping is the right safety valve, but it silently loses words from the
+# captions, so say so — rate-limited, since it drops per 8 KB read
+DROP_WARNING_SECONDS = 5.0
 
 
 class PcmStream:
@@ -34,6 +38,8 @@ class PcmStream:
         self.pcm: asyncio.Queue[bytes | None] = asyncio.Queue()
         self.failed = False
         self._queued_bytes = 0
+        self._dropped_bytes = 0
+        self._last_drop_warning = 0.0
         self._reader: asyncio.Task | None = None
 
     async def start(self) -> bool:
@@ -66,7 +72,20 @@ class PcmStream:
                 if not data:
                     break
                 if self._queued_bytes > MAX_QUEUED_PCM_BYTES:
-                    # the consumer is not keeping up; drop rather than grow
+                    # the consumer is not keeping up; drop rather than grow.
+                    # The recording is untouched — this costs caption words
+                    # only — but it used to happen with nothing in the log,
+                    # so a gap in the captions looked like silence in the room.
+                    self._dropped_bytes += len(data)
+                    now = time.monotonic()
+                    if now - self._last_drop_warning >= DROP_WARNING_SECONDS:
+                        self._last_drop_warning = now
+                        log.warning(
+                            "live_pcm_dropped",
+                            recording_id=self.recording_id,
+                            dropped_seconds=round(self._dropped_bytes / BYTES_PER_SECOND, 1),
+                            reason="caption engine is not keeping up",
+                        )
                     continue
                 self._queued_bytes += len(data)
                 self.pcm.put_nowait(data)
@@ -96,6 +115,12 @@ class PcmStream:
     async def close(self) -> None:
         if self.process is None:
             return
+        if self._dropped_bytes:
+            log.warning(
+                "live_pcm_dropped_total",
+                recording_id=self.recording_id,
+                dropped_seconds=round(self._dropped_bytes / BYTES_PER_SECOND, 1),
+            )
         try:
             if self.process.stdin is not None and not self.process.stdin.is_closing():
                 self.process.stdin.close()
@@ -113,14 +138,47 @@ class PcmStream:
         self.process = None
 
 
-def frames(pcm: bytes, seconds: float) -> list[bytes]:
-    """Split PCM into fixed-duration frames (Vosk wants ~250 ms; feeding one
-    10 s block would return a single result and behave like batch)."""
-    size = int(BYTES_PER_SECOND * seconds)
-    size -= size % 2  # never split a sample
-    if size <= 0:
-        return [pcm]
-    return [pcm[offset : offset + size] for offset in range(0, len(pcm), size)]
+class Framer:
+    """Fixed-size framing that carries the remainder between calls.
+
+    The obvious version — slice each block on its own — is wrong here, because
+    ffmpeg is read in READ_SIZE blocks and READ_SIZE is not a whole number of
+    frames at any size we use. Vosk was therefore fed 8000 bytes then 192,
+    repeatedly, instead of uniform frames; since it decides where an utterance
+    ends on each frame it receives and resets its language context there, the
+    ragged sequence moved those breaks and changed the words beside them. On
+    800 s of real assembly audio that cost 7.7% of the words against the
+    transcript the same model produced from the same audio in one pass.
+
+    Feeding a whole 10 s block instead is equally wrong: one result comes back
+    and captions behave like batch transcription.
+
+    push() then flush() over a stream yields exactly what slicing the whole
+    buffer at `size` would — uniform frames and one short tail — so the live
+    path can feed an engine the same sequence the batch path does.
+    """
+
+    def __init__(self, seconds: float):
+        size = int(BYTES_PER_SECOND * seconds)
+        self.size = max(2, size - size % 2)  # never split a sample
+        self._buffer = bytearray()
+
+    def push(self, pcm: bytes) -> list[bytes]:
+        """Whole frames available after adding `pcm`; the rest is kept."""
+        self._buffer.extend(pcm)
+        out = []
+        while len(self._buffer) >= self.size:
+            out.append(bytes(self._buffer[: self.size]))
+            del self._buffer[: self.size]
+        return out
+
+    def flush(self) -> list[bytes]:
+        """The short tail at end of stream, or nothing if it came out even."""
+        if not self._buffer:
+            return []
+        tail = bytes(self._buffer)
+        self._buffer.clear()
+        return [tail]
 
 
 def wav_bytes(pcm: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
