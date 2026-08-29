@@ -28,7 +28,17 @@ Open a pull request against
 citizens/citizens.csr
 ```
 
-Paste the PEM contents of the CSR. Make sure your GitHub profile shows an email
+Entirely doable in the browser — start at
+<https://github.com/nextcloud/app-certificate-requests/new/master>, name the file
+`citizens/citizens.csr`, and paste the PEM from
+`/root/.nextcloud/certificates/citizens.csr`. Their README asks for a link to
+the source, so include
+<https://github.com/Democracy-Routes/nextcloud-citizens> in the PR body. Do not
+@-mention anyone; the people who can help watch the repo.
+
+**Start this before anything else in this document.** It is the only step that
+waits on other people, and every later step — registering the app id, the
+release secrets, the first published archive — depends on it. Make sure your GitHub profile shows an email
 address. Turnaround is usually a few hours to three days; on merge, maintainers
 commit `citizens/citizens.crt` — that is the public certificate.
 

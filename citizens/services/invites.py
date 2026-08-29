@@ -126,26 +126,31 @@ def revoke_invites(session: Session, assembly_id: str) -> int:
 
     Regenerating QR sheets deliberately does not do this (see generate_invites)
     — new codes should not knock live tables off mid-round.
+
+    Every live session for the assembly is cut, not only those holding a
+    currently-active invite. Regeneration marks the previous invites revoked
+    while their sessions keep working (by design), so scoping this to active
+    invites left exactly those devices connected — through the one action an
+    organizer reaches for when they want everyone off now.
     """
     now = utcnow()
     active = _active_invites(session, assembly_id)
     for invite in active:
         invite.revoked_at = now
-    if active:
-        live = session.execute(
-            select(RecorderSession).where(
-                RecorderSession.invite_id.in_([invite.id for invite in active]),
-                RecorderSession.revoked_at.is_(None),
-            )
-        ).scalars()
-        disconnected = 0
-        for recorder_session in live:
-            recorder_session.revoked_at = now
-            disconnected += 1
-        log.info(
-            "invites_revoked",
-            assembly_id=assembly_id, invites=len(active), devices_disconnected=disconnected,
+    live = session.execute(
+        select(RecorderSession).where(
+            RecorderSession.assembly_id == assembly_id,
+            RecorderSession.revoked_at.is_(None),
         )
+    ).scalars()
+    disconnected = 0
+    for recorder_session in live:
+        recorder_session.revoked_at = now
+        disconnected += 1
+    log.info(
+        "invites_revoked",
+        assembly_id=assembly_id, invites=len(active), devices_disconnected=disconnected,
+    )
     session.flush()
     return len(active)
 

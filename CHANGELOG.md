@@ -4,6 +4,18 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Revoke now reaches every phone — 2026-08-29
+
+- **"Revoke access" could leave phones connected.** If you had regenerated the
+  QR sheet at any point — printing a replacement for a lost code, say — the
+  tables that were already recording kept working afterwards, which is correct
+  and deliberate. But revoking then only disconnected devices holding a *current*
+  code, so those same tables were the ones it skipped: the organizer pressed the
+  emergency stop and the phones already in the room kept their access for the
+  rest of the day. Revoke now disconnects every device on the assembly, which is
+  what the button has always said it does. Found by writing the negative
+  authorization tests, not in the field.
+
 ### Deploys now actually reach your browser — 2026-08-28 (v0.6.0-beta.11)
 
 - **The organizer interface could keep showing the previous build for an hour
