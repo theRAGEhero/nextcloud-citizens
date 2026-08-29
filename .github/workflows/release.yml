@@ -22,7 +22,7 @@ on:
         default: false
 
 env:
-  IMAGE: ghcr.io/theragehero/citizens
+  IMAGE: ghcr.io/democracy-routes/citizens
 
 jobs:
   image:

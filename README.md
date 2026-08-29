@@ -8,9 +8,10 @@ ordinary phone per discussion table records the conversation, and the app turns
 those recordings into transcripts, per-table summaries and cross-table findings
 that a human organizer reviews before anything is published.
 
-> **Beta.** The pipeline is tested end to end, but automatic retention and an
-> in-app participant consent notice are still to come. Bring your own privacy
-> notice and deletion practice if you run a real assembly.
+> **Beta.** The pipeline is tested end to end. Audio retention is configurable,
+> and the recorder tells each table what happens to the recording before it
+> starts. That screen is not a per-individual consent record, so bring your own
+> privacy notice, and rehearse before a high-stakes assembly.
 
 ```text
 50 citizens → 10 tables → 1 phone per table

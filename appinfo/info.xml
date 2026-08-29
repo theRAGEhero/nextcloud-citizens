@@ -53,7 +53,7 @@ This app records people's voices, which is sensitive personal data.
 * Organizers can download or **delete audio and transcripts** at any time from the
   Files tab of each assembly, without deleting the assembly itself.
 
-Full note: https://github.com/theRAGEhero/nextcloud-citizens/blob/main/docs/privacy.md
+Full note: https://github.com/Democracy-Routes/nextcloud-citizens/blob/main/docs/privacy.md
 
 ## Ethical AI Rating
 
@@ -70,29 +70,38 @@ See https://nextcloud.com/blog/nextcloud-ethical-ai-rating/
 ## Status
 
 This is a **beta release**. The recording, transcription, analysis and reporting
-pipeline is tested end to end, but automatic retention (scheduled deletion of audio)
-and an in-app participant consent notice are still to come. Organizers running real
-assemblies should have a privacy notice and a retention practice of their own.
+pipeline is tested end to end. Audio retention is configurable (delete N days after
+an assembly is closed, with a per-assembly override), and the recorder shows each
+table an information screen before recording starts, naming the transcription
+engine, whether it is an outside service, and how long audio is kept.
+
+That screen is an information and confirmation step at the table, **not** a
+per-individual consent record — Citizens does not store who agreed. Organisations
+whose lawful basis requires individual consent should collect it separately, and
+should run a rehearsal before a high-stakes assembly.
 	]]></description>
 	<version>0.6.0-beta.11</version>
 	<licence>AGPL-3.0-or-later</licence>
+	<!-- Maintainer first, then contributors. The mail attribute is optional in
+	     the store schema, so no address is invented for anyone. -->
+	<author>Alessandro Oppo</author>
 	<author mail="philip@decentsoftwa.re">Philip</author>
 	<documentation>
-		<user>https://github.com/theRAGEhero/nextcloud-citizens/blob/main/README.md</user>
-		<admin>https://github.com/theRAGEhero/nextcloud-citizens/blob/main/docs/administration.md</admin>
-		<developer>https://github.com/theRAGEhero/nextcloud-citizens/blob/main/docs/architecture.md</developer>
+		<user>https://github.com/Democracy-Routes/nextcloud-citizens/blob/main/README.md</user>
+		<admin>https://github.com/Democracy-Routes/nextcloud-citizens/blob/main/docs/administration.md</admin>
+		<developer>https://github.com/Democracy-Routes/nextcloud-citizens/blob/main/docs/architecture.md</developer>
 	</documentation>
 	<category>tools</category>
 	<category>ai</category>
-	<website>https://github.com/theRAGEhero/nextcloud-citizens</website>
-	<bugs>https://github.com/theRAGEhero/nextcloud-citizens/issues</bugs>
-	<repository type="git">https://github.com/theRAGEhero/nextcloud-citizens.git</repository>
-	<screenshot>https://raw.githubusercontent.com/theRAGEhero/nextcloud-citizens/main/img/screenshots/01-overview.png</screenshot>
-	<screenshot>https://raw.githubusercontent.com/theRAGEhero/nextcloud-citizens/main/img/screenshots/02-qr-codes.png</screenshot>
-	<screenshot>https://raw.githubusercontent.com/theRAGEhero/nextcloud-citizens/main/img/screenshots/03-live.png</screenshot>
-	<screenshot>https://raw.githubusercontent.com/theRAGEhero/nextcloud-citizens/main/img/screenshots/04-recorder.png</screenshot>
-	<screenshot>https://raw.githubusercontent.com/theRAGEhero/nextcloud-citizens/main/img/screenshots/05-analysis.png</screenshot>
-	<screenshot>https://raw.githubusercontent.com/theRAGEhero/nextcloud-citizens/main/img/screenshots/06-report.png</screenshot>
+	<website>https://github.com/Democracy-Routes/nextcloud-citizens</website>
+	<bugs>https://github.com/Democracy-Routes/nextcloud-citizens/issues</bugs>
+	<repository type="git">https://github.com/Democracy-Routes/nextcloud-citizens.git</repository>
+	<screenshot>https://raw.githubusercontent.com/Democracy-Routes/nextcloud-citizens/main/img/screenshots/01-overview.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/Democracy-Routes/nextcloud-citizens/main/img/screenshots/02-qr-codes.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/Democracy-Routes/nextcloud-citizens/main/img/screenshots/03-live.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/Democracy-Routes/nextcloud-citizens/main/img/screenshots/04-recorder.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/Democracy-Routes/nextcloud-citizens/main/img/screenshots/05-analysis.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/Democracy-Routes/nextcloud-citizens/main/img/screenshots/06-report.png</screenshot>
 	<dependencies>
 		<!-- 32 is the floor for HaRP-based deployment; the store caps
 		     max-version at the latest release + 1. -->
@@ -101,7 +110,7 @@ assemblies should have a privacy notice and a retention practice of their own.
 	<external-app>
 		<docker-install>
 			<registry>ghcr.io</registry>
-			<image>theragehero/citizens</image>
+			<image>democracy-routes/citizens</image>
 			<image-tag>0.6.0-beta.11</image-tag>
 		</docker-install>
 		<!-- Route regexes are matched against the request path WITHOUT a

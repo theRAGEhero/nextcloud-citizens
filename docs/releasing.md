@@ -78,7 +78,7 @@ git push origin main --tags
 Pushing the tag runs `.github/workflows/release.yml`, which:
 
 1. checks the tag matches `<version>` in `info.xml`;
-2. builds and pushes `ghcr.io/theragehero/citizens` for **amd64 and arm64**;
+2. builds and pushes `ghcr.io/democracy-routes/citizens` for **amd64 and arm64**;
 3. packages `build/citizens.tar.gz` (metadata only, one top-level `citizens/`
    folder, well under the store's 20 MB limit);
 4. signs it with `APP_PRIVATE_KEY`, attaches it to the GitHub release;
@@ -109,4 +109,4 @@ the same app id through a different daemon replaces the existing registration.
 - [ ] `CHANGELOG.md` has a section for this version
 - [ ] Tag matches `<version>` and `<image-tag>`
 - [ ] Image is public on GHCR and has both architectures
-      (`docker buildx imagetools inspect ghcr.io/theragehero/citizens:<version>`)
+      (`docker buildx imagetools inspect ghcr.io/democracy-routes/citizens:<version>`)

@@ -15,7 +15,7 @@ the API keys it needs, and understanding what leaves your server.
 ## 2. Install
 
 Settings → Administration → **External Apps** → find *Citizens* → **Install**.
-AppAPI pulls `ghcr.io/theragehero/citizens`, starts it, and enables it. The app
+AppAPI pulls `ghcr.io/democracy-routes/citizens`, starts it, and enables it. The app
 then appears in the top menu for every user.
 
 Nothing else is required to start: without API keys the app records and stores
@@ -130,8 +130,12 @@ transcripts and report), or delete audio and transcripts — per table or for th
 session — without deleting the assembly. Deleting an assembly deletes its
 stored files too.
 
-Automatic retention (scheduled deletion of audio some days after a session is
-closed) is **not implemented yet** in this beta; deletion is manual for now.
+**Automatic retention.** Settings → General sets how many days after an assembly
+is **closed** its audio is deleted; `0` keeps it indefinitely, and an individual
+assembly can override the instance default. Deletion runs from a periodic sweep
+and is audit-logged. It removes **audio only** — transcripts, findings and
+reports are the record of the assembly and are never touched by retention.
+Deleting those is still manual, from the Files tab.
 
 ## 6. Backups
 
