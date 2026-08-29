@@ -233,3 +233,90 @@ def test_wav_wrapper_is_a_valid_riff_container():
         assert handle.getnchannels() == 1
         assert handle.getframerate() == live_audio.SAMPLE_RATE
         assert handle.getsampwidth() == 2
+
+
+def test_a_session_keeps_every_line_but_shows_only_a_window():
+    """The record is the whole session; the phone is shown its tail.
+
+    self.lines used to be a deque capped at MAX_LINES, which was fine while
+    captions were only ever displayed and fatal once they became the assembly's
+    transcript: a 30-minute round kept its last eighty lines and silently
+    dropped the rest.
+    """
+    from citizens.services.live_captions import LIVE_CAPTIONS, MAX_LINES
+
+    session = make_session()
+    for index in range(MAX_LINES + 120):
+        session.add_line(f"line {index}", start=float(index))
+
+    assert len(session.lines) == MAX_LINES + 120, "the transcript must keep everything"
+
+    LIVE_CAPTIONS._sessions["rec-window"] = session
+    try:
+        shown = LIVE_CAPTIONS.status("rec-window")["lines"]
+    finally:
+        LIVE_CAPTIONS._sessions.pop("rec-window", None)
+    assert len(shown) == MAX_LINES, "a phone polling every couple of seconds must not get it all"
+    assert shown[-1]["text"] == f"line {MAX_LINES + 119}"
+
+
+def test_a_runaway_session_stops_rather_than_rewriting_its_start():
+    from citizens.services import live_captions
+
+    session = make_session()
+    original = live_captions.MAX_TRANSCRIPT_LINES
+    live_captions.MAX_TRANSCRIPT_LINES = 5
+    try:
+        for index in range(12):
+            session.add_line(f"line {index}", start=float(index))
+    finally:
+        live_captions.MAX_TRANSCRIPT_LINES = original
+
+    assert len(session.lines) == 5
+    assert session.truncated is True
+    # the beginning survives: dropping the oldest lines would quietly change
+    # what the transcript says happened first
+    assert session.lines[0]["text"] == "line 0"
+
+
+def test_provisional_lines_are_still_replaced_in_place():
+    """set_provisional/_drop_provisional worked on a deque; they must behave
+    identically now that lines is a list, or captions would stutter."""
+    session = make_session()
+    session.add_line("committed", start=0.0)
+    session.set_provisional("part", start=1.0)
+    session.set_provisional("partial text", start=1.0)
+    assert [line["text"] for line in session.lines] == ["committed", "partial text"]
+    session.add_line("final text", start=1.0)
+    assert [line["text"] for line in session.lines] == ["committed", "final text"]
+
+
+def test_a_restarted_session_does_not_erase_what_came_before(settings_env):
+    """A caption session that dies mid-round is replaced after the cooldown,
+    and the replacement starts with an empty buffer. Writing that over the file
+    would discard everything said before the failure — with final transcription
+    off, that is half a transcript gone and nothing to say it went."""
+    import asyncio
+    import json
+
+    from citizens.services.live_captions import LIVE_CAPTIONS
+    from citizens.storage.paths import live_caption_path
+
+    first = make_session()
+    first.recording_id = "rec-resume"
+    first.add_line("before the failure", start=1.0)
+    asyncio.run(LIVE_CAPTIONS._persist_transcript(first))
+
+    second = make_session()
+    second.recording_id = "rec-resume"
+    second.add_line("after reconnecting", start=90.0)
+    asyncio.run(LIVE_CAPTIONS._persist_transcript(second))
+
+    written = json.loads(
+        live_caption_path(settings_env.app_persistent_storage, "rec-resume").read_text()
+    )
+    assert [line["text"] for line in written["lines"]] == [
+        "before the failure",
+        "after reconnecting",
+    ]
+    assert written["resumed"] is True

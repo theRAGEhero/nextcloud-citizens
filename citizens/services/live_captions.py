@@ -13,6 +13,12 @@ Every configured engine can produce them, through the protocol it actually
 speaks: Deepgram (or any Deepgram-protocol server such as WhisperLiveKit)
 takes the WebM stream directly, while Vosk, Mistral Voxtral Realtime and
 Whisper endpoints are fed decoded PCM by citizens.services.live_audio.
+
+Captions are provisional whenever a final transcription will follow. When an
+administrator has turned final transcription OFF, they are the only record the
+assembly will ever have, so a session keeps every line it produced (not just
+the tail it displays) and writes them out when it ends, for
+jobs.handlers.handle_transcribe_from_live to turn into a real transcript.
 """
 
 import asyncio
@@ -20,10 +26,11 @@ import base64
 import json
 import time
 import urllib.parse
-from collections import deque
 
+from citizens.config import get_settings
 from citizens.logging_setup import get_logger
 from citizens.services import live_audio
+from citizens.storage.paths import live_caption_path
 
 log = get_logger(__name__)
 
@@ -32,14 +39,27 @@ MISTRAL_URL = "wss://api.mistral.ai/v1/audio/transcriptions/realtime"
 SESSION_IDLE_TIMEOUT = 180.0
 FAILURE_COOLDOWN = 60.0
 KEEPALIVE_SECONDS = 5.0
+# how many lines the phone and the monitor are shown — a display window, not
+# the record. self.lines keeps everything; status() returns this many.
 MAX_LINES = 80
+# Refusal point for a runaway session, about sixteen hours of speech. Dropping
+# the oldest lines instead would quietly rewrite the beginning of a transcript
+# somebody may rely on, so this stops appending and says so.
+MAX_TRANSCRIPT_LINES = 20000
 # byte-exact: vosk-server compares the terminator with a literal string
 VOSK_EOF = '{"eof" : 1}'
 
 
 class _BaseSession:
     """Shared caption-session state. Subclasses implement run() for one engine
-    and append {"t", "text", "speaker"} entries to self.lines."""
+    and append {"t", "end", "text", "speaker"} entries to self.lines.
+
+    self.lines is the WHOLE session, because with final transcription switched
+    off it becomes the assembly's transcript. It used to be a deque capped at
+    MAX_LINES, which silently discarded everything before the last eighty lines
+    — fine for a caption strip, useless as a record. status() does the capping
+    now, so the phone still receives a display window.
+    """
 
     #: True when the engine consumes decoded PCM rather than the WebM stream
     wants_pcm = False
@@ -58,7 +78,8 @@ class _BaseSession:
         self.model = model
         self.language = language
         self.queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=64)
-        self.lines: deque[dict] = deque(maxlen=MAX_LINES)
+        self.lines: list[dict] = []
+        self.truncated = False
         self.active = True
         self.failed_at: float | None = None
         self.last_fed = time.monotonic()
@@ -66,12 +87,33 @@ class _BaseSession:
         # engines fed with PCM own a decoder for this recording
         self.pcm_stream = None
 
-    def add_line(self, text: str, start: float = 0.0, speaker=None) -> None:
+    def add_line(
+        self,
+        text: str,
+        start: float = 0.0,
+        end: float | None = None,
+        speaker=None,
+        words: list[dict] | None = None,
+    ) -> None:
         text = (text or "").strip()
         if not text:
             return
         self._drop_provisional()
-        self.lines.append({"t": start, "text": text, "speaker": speaker})
+        if len(self.lines) >= MAX_TRANSCRIPT_LINES:
+            if not self.truncated:
+                self.truncated = True
+                log.warning(
+                    "live_transcript_truncated",
+                    recording_id=self.recording_id,
+                    lines=len(self.lines),
+                )
+            return
+        line = {"t": start, "text": text, "speaker": speaker}
+        if end is not None:
+            line["end"] = end
+        if words:
+            line["words"] = words
+        self.lines.append(line)
 
     def set_provisional(self, text: str, start: float = 0.0) -> None:
         """Show in-progress speech. Engines endpoint on pauses, so without this
@@ -170,7 +212,11 @@ class DeepgramSession(_BaseSession):
         if text:
             words = alternatives[0].get("words") or []
             speaker = words[0].get("speaker") if words else None
-            self.lines.append({"t": data.get("start", 0.0), "text": text, "speaker": speaker})
+            start = float(data.get("start") or 0.0)
+            duration = float(data.get("duration") or 0.0)
+            self.add_line(
+                text, start=start, end=start + duration if duration else None, speaker=speaker
+            )
 
 
 
@@ -247,7 +293,18 @@ class VoskSession(_BaseSession):
             self.set_provisional(data["partial"])
             return
         words = data.get("result") or []
-        self.add_line(data.get("text", ""), start=float(words[0]["start"]) if words else 0.0)
+        self.add_line(
+            data.get("text", ""),
+            start=float(words[0]["start"]) if words else 0.0,
+            end=float(words[-1]["end"]) if words else None,
+            # Vosk gives per-word timings and the batch path stores them; keep
+            # them so a live transcript is as navigable as a final one
+            words=[
+                {"text": w.get("word") or "", "start": float(w.get("start", 0.0)),
+                 "end": float(w.get("end", 0.0))}
+                for w in words
+            ],
+        )
 
 
 class MistralSession(_BaseSession):
@@ -358,6 +415,7 @@ class MistralSession(_BaseSession):
             self.add_line(
                 data.get("text") or self._pending,
                 start=float(data.get("start") or 0.0),
+                end=float(data["end"]) if data.get("end") is not None else None,
                 speaker=data.get("speaker_id"),
             )
             self._pending = ""
@@ -464,7 +522,7 @@ class WhisperSession(_BaseSession):
                 self._drop_provisional()
                 if self.lines:
                     self.lines.pop()
-            self.add_line(segment.get("text", ""), start=start)
+            self.add_line(segment.get("text", ""), start=start, end=end)
             self._last_start = start
             committed = max(committed, end)
         if not (raw.get("segments") or []) and raw.get("text") and final:
@@ -503,6 +561,8 @@ SESSION_TYPES = {
     "mistral": MistralSession,
     "whisper": WhisperSession,
 }
+# so a persisted transcript records which engine produced it
+PROVIDER_NAMES = {session: name for name, session in SESSION_TYPES.items()}
 
 
 class LiveCaptionManager:
@@ -557,7 +617,10 @@ class LiveCaptionManager:
         session = self._sessions.get(recording_id)
         if session is None:
             return {"active": False, "lines": []}
-        return {"active": session.active, "lines": list(session.lines)}
+        # a display window, not the record: self.lines is the whole session and
+        # can run to thousands of entries, which must never reach a phone that
+        # polls this every couple of seconds
+        return {"active": session.active, "lines": session.lines[-MAX_LINES:]}
 
     async def _feed_async(self, recording_id: str, data: bytes, config: dict, language: str) -> None:
         self._garbage_collect()
@@ -583,7 +646,9 @@ class LiveCaptionManager:
                 language,
                 endpoint=config.get("endpoint", ""),
             )
-            session.task = asyncio.get_running_loop().create_task(session.run())
+            session.task = asyncio.get_running_loop().create_task(
+                self._run_and_persist(session)
+            )
             if session.wants_pcm:
                 # the phone sends fragments of one WebM stream; these engines
                 # want PCM, so one ffmpeg decodes the stream for the session
@@ -624,6 +689,62 @@ class LiveCaptionManager:
                 session.queue.put_nowait(None)
             except asyncio.QueueFull:
                 pass
+
+    async def _run_and_persist(self, session: "_BaseSession") -> None:
+        """Run one caption session, then write down what it heard.
+
+        Persisting always, rather than only when final transcription is off,
+        keeps this side free of configuration: the job decides whether the file
+        is the transcript of record or merely a diagnostic. A session only
+        exists when live captions are enabled, so this never runs uninvited.
+        """
+        try:
+            await session.run()
+        finally:
+            try:
+                await self._persist_transcript(session)
+            except Exception:
+                log.warning(
+                    "live_transcript_persist_failed",
+                    recording_id=session.recording_id,
+                    exc_info=True,
+                )
+
+    async def _persist_transcript(self, session: "_BaseSession") -> None:
+        lines = [line for line in session.lines if not line.get("provisional")]
+        payload = {
+            "recording_id": session.recording_id,
+            "provider": PROVIDER_NAMES.get(type(session), ""),
+            "model": session.model,
+            "language": session.language,
+            "truncated": session.truncated,
+            "lines": lines,
+        }
+        path = live_caption_path(get_settings().app_persistent_storage, session.recording_id)
+
+        def write() -> None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            # A session that dies mid-round is replaced after the cooldown, and
+            # the replacement starts with an empty buffer. Overwriting would
+            # then throw away everything said before the failure — the first
+            # half of a transcript, silently. Its lines are strictly later in
+            # the recording, so appending is the whole of the fix.
+            if path.exists():
+                try:
+                    earlier = json.loads(path.read_text(encoding="utf-8")).get("lines") or []
+                except (OSError, ValueError):
+                    earlier = []
+                if earlier:
+                    payload["lines"] = earlier + payload["lines"]
+                    payload["resumed"] = True
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+        # This coroutine runs on the event loop, where a blocking write stalls
+        # every other request in the app (the defect fixed in b974eb5).
+        await asyncio.to_thread(write)
+        log.info(
+            "live_transcript_persisted", recording_id=session.recording_id, lines=len(lines)
+        )
 
     async def _finish_async(self, recording_id: str) -> None:
         session = self._sessions.get(recording_id)

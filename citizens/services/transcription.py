@@ -14,7 +14,13 @@ from citizens.providers.transcription import deepgram as deepgram_provider
 from citizens.providers.transcription import mistral as mistral_provider
 from citizens.providers.transcription import vosk as vosk_provider
 from citizens.providers.transcription import whisper as whisper_provider
-from citizens.providers.transcription.base import NormalizedTranscript, TranscriptionError
+from citizens.providers.transcription.base import (
+    NormalizedSegment,
+    NormalizedTranscript,
+    NormalizedWord,
+    SpeakerLabeler,
+    TranscriptionError,
+)
 from citizens.services import provider_config
 
 log = get_logger(__name__)
@@ -34,6 +40,70 @@ def batch_transcription_ready(store: provider_config.ConfigStore) -> bool:
     if provider in KEYED_PROVIDERS:
         return bool(store.get_value(f"{provider}_api_key"))
     return False
+
+
+def live_transcription_ready(store: provider_config.ConfigStore) -> bool:
+    """Whether live captions are configured — the same shape as
+    batch_transcription_ready, because either can be the transcript of record."""
+    if provider_config.get_setting(store, "stt_live_enabled") != "1":
+        return False
+    provider = provider_config.get_setting(store, "stt_provider")
+    if provider in URL_PROVIDERS:
+        return bool(provider_config.get_setting(store, URL_PROVIDERS[provider]))
+    if provider in KEYED_PROVIDERS:
+        return bool(store.get_value(f"{provider}_api_key"))
+    return False
+
+
+# what a caption line gets when its engine reported no end time and there is no
+# following line to run up to
+TRAILING_SEGMENT_SECONDS = 2.0
+
+
+def transcript_from_live_captions(data: dict) -> NormalizedTranscript:
+    """Turn a finished caption session into the same structure a provider
+    adapter returns, so store_transcript can treat it identically.
+
+    Caption engines are looser than batch ones about timings: Vosk and Whisper
+    give an end per line, Deepgram a duration, Mistral often neither. A segment
+    with no end is run up to the start of the next line, which is what actually
+    happened in the room.
+    """
+    labeler = SpeakerLabeler()
+    lines = [line for line in (data.get("lines") or []) if (line.get("text") or "").strip()]
+    segments: list[NormalizedSegment] = []
+    for index, line in enumerate(lines):
+        start = float(line.get("t") or 0.0)
+        end = line.get("end")
+        end = float(end) if end is not None else None
+        if end is None or end <= start:
+            following = float(lines[index + 1].get("t") or 0.0) if index + 1 < len(lines) else None
+            end = following if following is not None and following > start else None
+        if end is None:
+            end = start + TRAILING_SEGMENT_SECONDS
+        segments.append(
+            NormalizedSegment(
+                speaker=labeler.label(line.get("speaker")),
+                start=start,
+                end=end,
+                text=(line.get("text") or "").strip(),
+                words=[
+                    NormalizedWord(
+                        text=(word.get("text") or "")[:200],
+                        start=float(word.get("start") or 0.0),
+                        end=float(word.get("end") or 0.0),
+                    )
+                    for word in (line.get("words") or [])
+                ],
+            )
+        )
+    return NormalizedTranscript(
+        provider=data.get("provider") or "",
+        model=data.get("model") or "",
+        language=data.get("language") or "",
+        segments=segments,
+        raw=data,
+    )
 
 
 def transcribe_recording(
@@ -115,7 +185,10 @@ def transcribe_recording(
 
 
 def store_transcript(
-    session: Session, recording: Recording, normalized: NormalizedTranscript
+    session: Session,
+    recording: Recording,
+    normalized: NormalizedTranscript,
+    source: str = "final",
 ) -> Transcript:
     """Replace any existing transcript for this recording (retranscription)."""
     existing = session.query(Transcript).filter_by(recording_id=recording.id).one_or_none()
@@ -140,6 +213,7 @@ def store_transcript(
         provider=normalized.provider,
         model=normalized.model,
         language=normalized.language,
+        source=source,
         raw_response_path=str(raw_path.relative_to(settings.app_persistent_storage)),
     )
     for index, segment in enumerate(normalized.segments):
@@ -172,6 +246,7 @@ def transcript_payload(transcript: Transcript) -> dict:
         "provider": transcript.provider,
         "model": transcript.model,
         "language": transcript.language,
+        "source": transcript.source,
         "segments": [
             {
                 "id": segment.id,

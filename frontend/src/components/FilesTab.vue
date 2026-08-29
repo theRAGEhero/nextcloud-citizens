@@ -8,6 +8,7 @@ import {
 	mdiMusicNoteOutline,
 	mdiPackageVariantClosed,
 	mdiTextBoxRemoveOutline,
+	mdiTextSearch,
 } from '@mdi/js'
 import { computed, onMounted, ref } from 'vue'
 import { api, BASE } from '../api'
@@ -27,6 +28,7 @@ const busy = ref(false)
 const confirmOne = ref<FileEntry | null>(null)
 const confirmAll = ref(false)
 const confirmTranscript = ref<FileEntry | null>(null)
+const confirmRetranscribe = ref<FileEntry | null>(null)
 const confirmAllTranscripts = ref(false)
 
 async function reload(): Promise<void> {
@@ -47,6 +49,22 @@ const hasAudio = computed(() =>
 const hasTranscripts = computed(() =>
 	(listing.value?.rounds ?? []).some((round) => round.tables.some((t) => t.has_transcript)),
 )
+
+async function retranscribe(): Promise<void> {
+	const entry = confirmRetranscribe.value
+	confirmRetranscribe.value = null
+	if (!entry) return
+	busy.value = true
+	try {
+		await api.requestTranscription(entry.recording_id)
+		toast('Transcribing again from the stored audio — this can take a few minutes')
+		await reload()
+	} catch (err) {
+		error.value = err instanceof Error ? err.message : String(err)
+	} finally {
+		busy.value = false
+	}
+}
 
 async function deleteTranscript(): Promise<void> {
 	const entry = confirmTranscript.value
@@ -218,6 +236,13 @@ async function deleteAll(): Promise<void> {
 									<span :class="entry.has_transcript ? 'cz-ok' : 'cz-muted'">
 										{{ entry.has_transcript ? '✓' : '—' }}
 									</span>
+									<span
+										v-if="entry.transcript_source === 'live'"
+										class="cz-muted"
+										style="font-size: 11.5px; margin-left: 6px"
+										title="From the live captions, not a transcription of the finished audio">
+										live
+									</span>
 								</td>
 								<td style="text-align: right">
 									<div class="cz-row" style="justify-content: flex-end; flex-wrap: nowrap">
@@ -240,6 +265,15 @@ async function deleteAll(): Promise<void> {
 										<CzButton
 											small
 											variant="tertiary"
+											:icon="mdiTextSearch"
+											title="Transcribe again from the stored audio"
+											:disabled="busy || !entry.audio_available"
+											@click="confirmRetranscribe = entry">
+											Re-transcribe
+										</CzButton>
+										<CzButton
+											small
+											variant="tertiary"
 											:icon="mdiTextBoxRemoveOutline"
 											title="Delete transcript"
 											:disabled="busy || !entry.has_transcript"
@@ -254,6 +288,14 @@ async function deleteAll(): Promise<void> {
 				</div>
 			</div>
 		</template>
+
+		<CzConfirm
+			v-if="confirmRetranscribe"
+			title="Transcribe this table again?"
+			:message="`Table ${confirmRetranscribe.table_number} will be transcribed again from its stored audio${confirmRetranscribe.transcript_source === 'live' ? ', replacing the transcript taken from the live captions' : ', replacing the current transcript'}. Quotes inside existing findings refer to the old text, so they are marked as removed, and the analysis runs again. The audio is not touched.`"
+			confirm-label="Transcribe again"
+			@confirm="retranscribe"
+			@cancel="confirmRetranscribe = null" />
 
 		<CzConfirm
 			v-if="confirmOne"

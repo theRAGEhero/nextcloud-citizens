@@ -52,6 +52,7 @@ export interface FileEntry {
 	audio_available: boolean
 	audio_deleted_at: string | null
 	has_transcript: boolean
+	transcript_source: string
 	can_retranscribe: boolean
 }
 

@@ -522,6 +522,28 @@ function keyPlaceholder(configured: boolean, hint: string): string {
 						<input v-model="batchEnabled" type="checkbox" /> Final transcription (canonical)
 					</label>
 				</div>
+				<span class="cz-muted" style="font-size: 12.5px; display: block; margin-top: 8px">
+					<template v-if="liveEnabled && batchEnabled">
+						Tables see captions while they talk, and each recording is transcribed again
+						afterwards from the complete audio. The final transcript is the record and the
+						one the analysis reads.
+					</template>
+					<template v-else-if="batchEnabled">
+						No captions during the round. Each recording is transcribed after it is
+						uploaded, and that transcript is the record.
+					</template>
+					<template v-else-if="liveEnabled">
+						<strong>The captions are the record.</strong> Nothing is transcribed a second
+						time, so the analysis reads what was captured live — quicker and much cheaper,
+						but captions can miss speech the engine could not keep up with. The audio is
+						kept, so any table can be transcribed properly later from its Files tab.
+					</template>
+					<template v-else>
+						<strong style="color: var(--cz-danger)">Nothing will be transcribed.</strong> Recordings are
+						stored as audio and nothing else: no transcript, no analysis, and an empty
+						report. Tick at least one box unless you only want the audio.
+					</template>
+				</span>
 			</div>
 
 			<div v-show="tab === 'ai'" class="cz-card">

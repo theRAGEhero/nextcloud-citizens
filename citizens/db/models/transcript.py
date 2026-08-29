@@ -20,6 +20,11 @@ class Transcript(Base):
     provider: Mapped[str] = mapped_column(String(20))
     model: Mapped[str] = mapped_column(String(80), default="")
     language: Mapped[str] = mapped_column(String(10), default="")
+    # "final" = transcribed from the complete audio; "live" = assembled from
+    # the provisional captions, which is all there is when an administrator has
+    # turned final transcription off. A reader of the report is entitled to
+    # know which one they are reading.
+    source: Mapped[str] = mapped_column(String(10), default="final", server_default="final")
     # path (relative to persistent storage) of the raw provider response JSON
     raw_response_path: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=utcnow)

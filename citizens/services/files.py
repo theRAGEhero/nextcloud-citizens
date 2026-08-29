@@ -56,13 +56,15 @@ def list_files(session: Session, assembly: Assembly) -> dict:
             .order_by(Recording.table_number, Recording.created_at)
         ).scalars()
     )
+    # source too, so the tab can mark a captions-derived transcript and offer
+    # to replace it with a real one
     transcribed = {
-        row
-        for row in session.execute(
-            select(Transcript.recording_id).where(
+        recording_id: source
+        for recording_id, source in session.execute(
+            select(Transcript.recording_id, Transcript.source).where(
                 Transcript.recording_id.in_([r.id for r in recordings] or [""])
             )
-        ).scalars()
+        )
     }
     by_round: dict[str, list[dict]] = {}
     total_bytes = 0
@@ -96,6 +98,7 @@ def list_files(session: Session, assembly: Assembly) -> dict:
                     recording.audio_deleted_at.isoformat() if recording.audio_deleted_at else None
                 ),
                 "has_transcript": recording.id in transcribed,
+                "transcript_source": transcribed.get(recording.id, ""),
                 "can_retranscribe": path is not None,
             }
         )

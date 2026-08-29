@@ -84,6 +84,32 @@ def _has_speaker_labels(session: Session, assembly: Assembly) -> bool:
     )
 
 
+LIVE_TRANSCRIPT_NOTE = (
+    " This assembly's transcripts come from the live captions produced while "
+    "the tables were speaking, not from a separate transcription of the "
+    "complete recordings. Captions are made under time pressure and can miss "
+    "speech the engine could not keep up with, so passages may be absent or "
+    "less accurate than the audio itself."
+)
+
+
+def _has_live_transcript(session: Session, assembly: Assembly) -> bool:
+    """True when any of this assembly's transcripts came from live captions.
+
+    That is a weaker record than a transcription of the finished audio, and a
+    reader of the report is entitled to know which one they are reading.
+    """
+    return (
+        session.execute(
+            select(Transcript.id)
+            .join(Recording, Recording.id == Transcript.recording_id)
+            .where(Recording.assembly_id == assembly.id, Transcript.source == "live")
+            .limit(1)
+        ).first()
+        is not None
+    )
+
+
 def build_report(session: Session, assembly: Assembly, include_drafts: bool = False) -> dict:
     participant_count = session.execute(
         select(func.count()).select_from(Participant).where(Participant.assembly_id == assembly.id)
@@ -198,7 +224,11 @@ def build_report(session: Session, assembly: Assembly, include_drafts: bool = Fa
             + ("with speaker diarization " if _has_speaker_labels(session, assembly) else "")
             + "and analyzed per table, then aggregated across tables."
         ),
-        "methodology_note": METHODOLOGY_NOTE,
+        "methodology_note": (
+            METHODOLOGY_NOTE + LIVE_TRANSCRIPT_NOTE
+            if _has_live_transcript(session, assembly)
+            else METHODOLOGY_NOTE
+        ),
         "include_drafts": include_drafts,
         # when set, table phones can view/download this report
         "published_at": (

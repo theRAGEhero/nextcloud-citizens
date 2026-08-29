@@ -4,6 +4,36 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Live captions can be the transcript — 2026-08-29
+
+- **Turning off "Final transcription" no longer throws the assembly away.**
+  Before, leaving only live transcription on gave you captions during the round
+  and then nothing at all: the captions were never saved, no transcript was
+  produced, the analysis never ran, and the report came out empty — with nothing
+  anywhere to tell you. Now the captions become the transcript, the analysis
+  reads them, and the report is built from them as usual. The three working
+  combinations are the ones you would expect: final only, live only, or both
+  (where the final transcript is the record).
+- This is worth choosing on purpose, not just a trap removed. Transcribing the
+  finished audio a second time costs roughly ten minutes of processing per
+  half-hour table, for text the server already worked out while listening. Live
+  only skips it.
+- **A report built from captions says so**, in the same methodology note that
+  appears on the PDF, the Markdown, the organizer's screen and the participants'
+  copy. Captions are made under time pressure and can miss speech, so a reader
+  is told which kind of record they are holding.
+- **"Re-transcribe" is now a button.** If the captions read poorly, one action on
+  the Files tab transcribes that table properly from its stored audio and re-runs
+  the analysis. This was possible before only by deleting the transcript first —
+  through a dialog warning you about permanent erasure, which is the wrong thing
+  to click when what you want is better text.
+- **A caption engine that drops out mid-round no longer loses the first half of
+  the transcript.** When a session failed and reconnected, the replacement began
+  empty and overwrote everything recorded before the failure.
+- Settings now explains what each combination of the two switches actually does,
+  and warns plainly when neither is ticked — the one setting that still produces
+  no record.
+
 ### Live captions now match the transcript — 2026-08-29
 
 - **The captions on the phone disagreed with the final transcript even when

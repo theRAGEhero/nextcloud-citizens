@@ -7,7 +7,9 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from citizens.config import get_settings
 from citizens.db.models import AppJob, Recording, Round
+from citizens.db.models.base import utcnow
 from citizens.logging_setup import get_logger
 from citizens.providers.analysis.openai_compat import AnalysisError
 from citizens.providers.transcription.base import TranscriptionError
@@ -17,6 +19,7 @@ from citizens.services import transcription as transcription_svc
 from citizens.services.audio import AudioAssemblyError, StorageFullError, assemble_recording
 from citizens.services.jobs import enqueue_job
 from citizens.services.recording_states import transition
+from citizens.storage.paths import live_caption_path
 
 log = get_logger(__name__)
 
@@ -72,6 +75,11 @@ def _maybe_enqueue_transcription(session: Session, recording: Recording) -> None
         if transcription_svc.batch_transcription_ready(store):
             enqueue_job(session, "TRANSCRIBE_FINAL", {"recording_id": recording.id})
             log.info("transcription_enqueued", recording_id=recording.id)
+        elif transcription_svc.live_transcription_ready(store):
+            # captions are the only transcript this assembly will get, so they
+            # become the record rather than being discarded with the session
+            enqueue_job(session, "TRANSCRIBE_FROM_LIVE", {"recording_id": recording.id})
+            log.info("live_transcription_enqueued", recording_id=recording.id)
     except Exception:
         # never let STT config problems endanger the assembled audio
         log.warning("transcription_enqueue_failed", recording_id=recording.id, exc_info=True)
@@ -102,6 +110,71 @@ def handle_transcribe_final(session: Session, payload: dict) -> None:
     recording.error_code = ""
     transition(recording, "TRANSCRIBED")
     _maybe_enqueue_analysis(session, recording)
+
+
+# A caption session finishes draining within seconds of the round ending, but
+# the assembly job can beat it there. Retries cover the gap (attempts land at
+# roughly 0, 30, 90, 210 and 450 s); past this the captions are not coming.
+LIVE_CAPTIONS_GRACE_SECONDS = 300
+
+
+def handle_transcribe_from_live(session: Session, payload: dict) -> None:
+    """Make the round's live captions the transcript of record.
+
+    Only reached when an administrator has turned final transcription off. The
+    result is a real Transcript with segments, so analysis, evidence citations
+    and the report work exactly as they do for a batch transcript — flagged
+    source="live" so a reader can tell.
+    """
+    recording = session.get(Recording, payload["recording_id"])
+    if recording is None:
+        raise PermanentJobError(f"Recording {payload['recording_id']} no longer exists")
+    if recording.state == "TRANSCRIBED" and not payload.get("force"):
+        return
+    if recording.state in ("AUDIO_READY", "TRANSCRIPTION_FAILED", "TRANSCRIBED"):
+        transition(recording, "TRANSCRIBING")
+    elif recording.state != "TRANSCRIBING":
+        raise PermanentJobError(f"Recording is {recording.state}; cannot transcribe")
+
+    path = live_caption_path(get_settings().app_persistent_storage, recording.id)
+    if not path.exists():
+        waited = (utcnow() - recording.updated_at).total_seconds()
+        if waited < LIVE_CAPTIONS_GRACE_SECONDS:
+            # a plain exception is retried with backoff; the rollback undoes
+            # the TRANSCRIBING transition above, so the next attempt starts clean
+            raise RuntimeError("Live captions have not been written yet")
+        _fail_transcription(session, recording, "LIVE_CAPTIONS_MISSING")
+        raise PermanentJobError("The caption session never wrote a transcript")
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        _fail_transcription(session, recording, "LIVE_CAPTIONS_UNREADABLE")
+        raise PermanentJobError(f"Live captions unreadable: {exc}") from exc
+
+    normalized = transcription_svc.transcript_from_live_captions(data)
+    if not normalized.segments:
+        # the engine never connected, or heard nothing it was confident about.
+        # Saying so beats leaving a table silently absent from the report.
+        _fail_transcription(session, recording, "LIVE_CAPTIONS_EMPTY")
+        raise PermanentJobError("Live captions produced no text")
+
+    transcription_svc.store_transcript(session, recording, normalized, source="live")
+    recording.error_code = ""
+    transition(recording, "TRANSCRIBED")
+    log.info(
+        "live_transcript_stored",
+        recording_id=recording.id,
+        segments=len(normalized.segments),
+        truncated=bool(data.get("truncated")),
+    )
+    _maybe_enqueue_analysis(session, recording)
+
+
+def _fail_transcription(session: Session, recording: Recording, code: str) -> None:
+    recording.error_code = code
+    transition(recording, "TRANSCRIPTION_FAILED")
+    log.error("live_transcription_failed", recording_id=recording.id, error_code=code)
 
 
 def _maybe_enqueue_analysis(session: Session, recording: Recording) -> None:
@@ -187,6 +260,7 @@ def handle_analyze_round(session: Session, payload: dict) -> None:
 HANDLERS = {
     "ASSEMBLE_AUDIO": handle_assemble_audio,
     "TRANSCRIBE_FINAL": handle_transcribe_final,
+    "TRANSCRIBE_FROM_LIVE": handle_transcribe_from_live,
     "ANALYZE_TABLE": handle_analyze_table,
     "ANALYZE_ROUND": handle_analyze_round,
 }

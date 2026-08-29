@@ -9,7 +9,8 @@ never touches Nextcloud user files.
 from collections.abc import Sequence
 from pathlib import Path
 
-SUBDIRS = ("recordings", "assembled", "transcripts", "exports", "temp", "logs")
+SUBDIRS = ("recordings", "assembled", "transcripts", "exports", "temp", "logs",
+           "live_captions")
 
 
 def ensure_storage_layout(root: Path) -> None:
@@ -57,6 +58,17 @@ def device_log_path(root: Path, session_id: str) -> Path:
     """Per-recorder-session shipped client logs (JSONL). session_id is a
     server-generated UUID, never client input."""
     return root / "logs" / "devices" / f"{session_id}.jsonl"
+
+
+def live_caption_path(root: Path, recording_id: str) -> Path:
+    """Where a finished caption session leaves what it heard.
+
+    With final transcription switched off these lines are the assembly's only
+    transcript, so they go to disk rather than staying in memory: a container
+    restart between the round ending and the job running must not be what
+    destroys the record. recording_id is a server-generated UUID.
+    """
+    return root / "live_captions" / f"{recording_id}.json"
 
 
 def purge_assembly_storage(
