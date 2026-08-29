@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from citizens.api.downloads import download_headers
 from citizens.config import get_settings
@@ -120,20 +121,33 @@ async def upload_chunk(
     # read, so one phone on congested venue WiFi stalled every other table
     # until they hit busy_timeout and got "database is locked".
     body = await request.body()
-    # Refresh the caption config here too, still before any query: it is cached
-    # for 30 s, and when the cache expires it makes an OCS call to Nextcloud.
-    # Doing that further down held the write lock across that call.
-    stt = live_stt_snapshot()
-    recorder_session = _session_from_authorization(session, authorization)
-    recording = rec_svc.get_session_recording(session, recorder_session, recording_id)
-    result = rec_svc.receive_chunk(session, recording, sequence_number, x_chunk_sha256, body)
+
+    # Everything below blocks: SQLite waits up to busy_timeout for the writer
+    # slot, the chunk is written to disk, and the config read makes an OCS call
+    # to Nextcloud whenever its 30-second cache expires. This is the ONLY async
+    # endpoint in the app, so running any of that inline ran it on the event
+    # loop — freezing the entire server, not merely this request. Ten tables
+    # uploading at once made a plain redirect take 27 seconds, the organizer UI
+    # stop responding, and commits (which the loop must schedule) stall until
+    # waiting writers gave up with "database is locked".
+    def _persist() -> tuple[dict, str, str, dict]:
+        stt = live_stt_snapshot()
+        recorder_session = _session_from_authorization(session, authorization)
+        recording = rec_svc.get_session_recording(session, recorder_session, recording_id)
+        outcome = rec_svc.receive_chunk(
+            session, recording, sequence_number, x_chunk_sha256, body
+        )
+        language = ""
+        if not outcome.get("duplicate"):
+            assembly = session.get(Assembly, recording.assembly_id)
+            language = assembly.language if assembly else ""
+        return outcome, recording.id, language, stt
+
+    result, recording_id_out, language, stt = await run_in_threadpool(_persist)
     if not result.get("duplicate"):
         # provisional live captions ride on the safety upload — failures here
         # never affect the recording (brief §51)
-        assembly = session.get(Assembly, recording.assembly_id)
-        LIVE_CAPTIONS.feed(
-            recording.id, body, stt, assembly.language if assembly else ""
-        )
+        LIVE_CAPTIONS.feed(recording_id_out, body, stt, language)
     return result
 
 

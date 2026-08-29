@@ -4,6 +4,22 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### A full room no longer freezes the server — 2026-08-29
+
+- **Ten tables uploading at once brought the whole app to a standstill.** Not
+  just slow — stopped: during a ten-table upload, a page that touches no data at
+  all took 27 seconds and then gave up, the organizer interface stopped
+  responding, and phones started getting errors as the database gave up waiting.
+  Two of ten uploads finished in ten minutes. The cause was the upload handler
+  doing its work in a way that let one phone's upload hold up every other
+  request in the app, including the ones that had nothing to do with recording.
+  The same ten tables now finish in 35 seconds with no request over 1.7 seconds,
+  and the rest of the app stays responsive throughout.
+- This was invisible to the existing load test, which ran ten devices in ten
+  *separate* assemblies — which is not a room. `tests/load/load_g_single_assembly.py`
+  puts all ten in one assembly and releases them together, the way a facilitator
+  starting a round does.
+
 ### Revoke now reaches every phone — 2026-08-29
 
 - **"Revoke access" could leave phones connected.** If you had regenerated the

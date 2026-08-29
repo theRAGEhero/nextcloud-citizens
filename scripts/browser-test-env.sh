@@ -40,12 +40,17 @@ case "${1:-}" in
         docker exec -e APP_PERSISTENT_STORAGE=/tmp/citizens-test-data "$TEST_CONTAINER" \
             sh -c "cd /app && python3 -m citizens.devtools seed-recorder-test"
         ;;
+    seed-load)
+        # one assembly with N tables (default 10) — see tests/load/load_g_single_assembly.py
+        docker exec -e APP_PERSISTENT_STORAGE=/tmp/citizens-test-data "$TEST_CONTAINER" \
+            sh -c "cd /app && python3 -m citizens.devtools seed-load-test ${2:-10}"
+        ;;
     stop)
         docker rm -f "$TEST_CONTAINER" >/dev/null 2>&1 || true
         echo "stopped"
         ;;
     *)
-        echo "Usage: $0 start|seed|stop" >&2
+        echo "Usage: $0 start|seed|seed-load [N]|stop" >&2
         exit 2
         ;;
 esac
