@@ -23,7 +23,7 @@ from citizens.logging_setup import get_logger
 from citizens.services.recording_states import InvalidTransition, transition
 from citizens.services.report import build_report, render_markdown
 from citizens.services.transcription import transcript_payload
-from citizens.storage.paths import exports_dir, recording_dir
+from citizens.storage.paths import exports_dir, live_caption_path, recording_dir
 
 log = get_logger(__name__)
 
@@ -192,6 +192,11 @@ def delete_recording_transcript(session: Session, recording: Recording) -> bool:
     marked = mark_evidence_removed(session, transcript)
     if transcript.raw_response_path:
         (_storage_root() / transcript.raw_response_path).unlink(missing_ok=True)
+    # the captions this may have been built from are the same speech in another
+    # file; "erase the verbatim text" has to mean both
+    live_caption_path(_storage_root(), recording.assembly_id, recording.id).unlink(
+        missing_ok=True
+    )
     session.delete(transcript)
     session.flush()
     # back to plain audio so the organizer can re-run transcription

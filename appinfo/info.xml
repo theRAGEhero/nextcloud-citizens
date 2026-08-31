@@ -41,9 +41,14 @@ This app records people's voices, which is sensitive personal data.
 * **Speech-to-text** (both the live captions shown while recording and the final
   transcript): four engines are supported. Deepgram and Mistral are hosted
   services — with those, the assembled audio of a recording is sent to the provider
-  once, for transcription. **Whisper** works against any OpenAI-compatible endpoint,
+  once for transcription, and, if live captions are on, in ~10-second pieces while
+  the table is speaking. **Whisper** works against any OpenAI-compatible endpoint,
   including one you run yourself, and **Vosk** runs entirely offline on your own
   server; with either of those, audio never leaves your infrastructure.
+* Transcription of the finished audio can be switched off, in which case the live
+  captions become the assembly's transcript and nothing is sent a second time.
+  Reports built that way say so, because captions can miss speech an engine could
+  not keep up with.
 * **Analysis**: when an administrator configures an analysis endpoint, only the
   *transcript text* (never audio) is sent to it. Any OpenAI-compatible endpoint
   works, so this step can run entirely on your own infrastructure — for example a

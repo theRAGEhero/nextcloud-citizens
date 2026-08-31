@@ -130,7 +130,7 @@ async def upload_chunk(
     # uploading at once made a plain redirect take 27 seconds, the organizer UI
     # stop responding, and commits (which the loop must schedule) stall until
     # waiting writers gave up with "database is locked".
-    def _persist() -> tuple[dict, str, str, dict]:
+    def _persist() -> tuple[dict, str, str, dict, str]:
         stt = live_stt_snapshot()
         recorder_session = _session_from_authorization(session, authorization)
         recording = rec_svc.get_session_recording(session, recorder_session, recording_id)
@@ -141,13 +141,13 @@ async def upload_chunk(
         if not outcome.get("duplicate"):
             assembly = session.get(Assembly, recording.assembly_id)
             language = assembly.language if assembly else ""
-        return outcome, recording.id, language, stt
+        return outcome, recording.id, language, stt, recording.assembly_id
 
-    result, recording_id_out, language, stt = await run_in_threadpool(_persist)
+    result, recording_id_out, language, stt, assembly_id = await run_in_threadpool(_persist)
     if not result.get("duplicate"):
         # provisional live captions ride on the safety upload — failures here
         # never affect the recording (brief §51)
-        LIVE_CAPTIONS.feed(recording_id_out, body, stt, language)
+        LIVE_CAPTIONS.feed(recording_id_out, body, stt, language, assembly_id)
     return result
 
 

@@ -71,9 +71,13 @@ class _BaseSession:
         model: str,
         language: str,
         endpoint: str = "",
+        assembly_id: str = "",
     ):
         self.endpoint = endpoint
         self.recording_id = recording_id
+        # only needed to file the persisted transcript under its assembly, so
+        # deleting the assembly takes it too
+        self.assembly_id = assembly_id
         self.api_key = api_key
         self.model = model
         self.language = language
@@ -587,7 +591,9 @@ class LiveCaptionManager:
             return vosk_model_path(entry)
         return vosk_model_path(entry.get("live", ""))
 
-    def feed(self, recording_id: str, data: bytes, config: dict, language: str) -> None:
+    def feed(
+        self, recording_id: str, data: bytes, config: dict, language: str, assembly_id: str = ""
+    ) -> None:
         """Called from the (threadpool) chunk-upload path. Never raises."""
         try:
             if self._loop is None or not config.get("enabled"):
@@ -601,7 +607,7 @@ class LiveCaptionManager:
             if provider in ("vosk", "whisper") and not config.get("endpoint"):
                 return
             asyncio.run_coroutine_threadsafe(
-                self._feed_async(recording_id, data, config, language), self._loop
+                self._feed_async(recording_id, data, config, language, assembly_id), self._loop
             )
         except Exception:
             log.warning("live_stt_feed_failed", recording_id=recording_id, exc_info=True)
@@ -622,7 +628,9 @@ class LiveCaptionManager:
         # polls this every couple of seconds
         return {"active": session.active, "lines": session.lines[-MAX_LINES:]}
 
-    async def _feed_async(self, recording_id: str, data: bytes, config: dict, language: str) -> None:
+    async def _feed_async(
+        self, recording_id: str, data: bytes, config: dict, language: str, assembly_id: str = ""
+    ) -> None:
         self._garbage_collect()
         session = self._sessions.get(recording_id)
         if session is not None and session.failed_at is not None:
@@ -645,6 +653,7 @@ class LiveCaptionManager:
                 model,
                 language,
                 endpoint=config.get("endpoint", ""),
+                assembly_id=assembly_id,
             )
             session.task = asyncio.get_running_loop().create_task(
                 self._run_and_persist(session)
@@ -720,7 +729,9 @@ class LiveCaptionManager:
             "truncated": session.truncated,
             "lines": lines,
         }
-        path = live_caption_path(get_settings().app_persistent_storage, session.recording_id)
+        path = live_caption_path(
+            get_settings().app_persistent_storage, session.assembly_id, session.recording_id
+        )
 
         def write() -> None:
             path.parent.mkdir(parents=True, exist_ok=True)

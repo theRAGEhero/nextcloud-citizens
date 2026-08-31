@@ -85,7 +85,9 @@ def live_only(client, tmp_path, monkeypatch):
     def finish(captions=CAPTIONS):
         """Stand in for the caption session ending and writing what it heard."""
         if captions is not None:
-            path = live_caption_path(get_settings().app_persistent_storage, recording_id)
+            path = live_caption_path(
+                get_settings().app_persistent_storage, assembly["id"], recording_id
+            )
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps({
                 "recording_id": recording_id, "provider": "vosk",
@@ -200,3 +202,44 @@ def test_a_live_transcript_can_be_upgraded_after_analysis(live_only, monkeypatch
     client.post(f"/api/v1/assemblies/{live_only['assembly']['id']}/close")
     report = client.get(f"/api/v1/assemblies/{live_only['assembly']['id']}/report").json()
     assert "live captions" not in report["methodology_note"]
+
+
+def test_deleting_the_assembly_takes_the_captions_with_it(live_only):
+    """Caption files used to be keyed by recording id alone, outside the
+    per-assembly tree that purge_assembly_storage walks — so deleting an
+    assembly left the text of what people said on disk, unreachable by anything
+    that could delete it later. The device logs made the same mistake once."""
+    live_only["finish"]()
+    _wait_state(live_only, {"TRANSCRIBED", "ANALYZING", "READY_FOR_REVIEW"})
+
+    path = live_caption_path(
+        get_settings().app_persistent_storage,
+        live_only["assembly"]["id"],
+        live_only["recording_id"],
+    )
+    assert path.exists(), "the session should have written its captions"
+
+    assert live_only["client"].delete(
+        f"/api/v1/assemblies/{live_only['assembly']['id']}"
+    ).status_code == 204
+    assert not path.exists(), "captions survived the assembly being deleted"
+
+
+def test_deleting_a_transcript_takes_the_captions_it_came_from(live_only):
+    """"Erase the verbatim text of this table" has to mean both copies: the
+    transcript rows and the captions they were built from."""
+    live_only["finish"]()
+    _wait_state(live_only, {"TRANSCRIBED", "ANALYZING", "READY_FOR_REVIEW"})
+
+    path = live_caption_path(
+        get_settings().app_persistent_storage,
+        live_only["assembly"]["id"],
+        live_only["recording_id"],
+    )
+    assert path.exists()
+
+    response = live_only["client"].delete(
+        f"/api/v1/recordings/{live_only['recording_id']}/transcript"
+    )
+    assert response.status_code == 200, response.text
+    assert not path.exists(), "captions survived the transcript being deleted"

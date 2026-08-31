@@ -60,23 +60,29 @@ def device_log_path(root: Path, session_id: str) -> Path:
     return root / "logs" / "devices" / f"{session_id}.jsonl"
 
 
-def live_caption_path(root: Path, recording_id: str) -> Path:
+def live_caption_path(root: Path, assembly_id: str, recording_id: str) -> Path:
     """Where a finished caption session leaves what it heard.
 
     With final transcription switched off these lines are the assembly's only
     transcript, so they go to disk rather than staying in memory: a container
     restart between the round ending and the job running must not be what
-    destroys the record. recording_id is a server-generated UUID.
+    destroys the record. Both ids are server-generated UUIDs.
+
+    Under the assembly, not flat by recording id, so purge_assembly_storage
+    reaches it with everything else. Keyed only by recording it would have
+    survived deleting the assembly — the exact orphan the device logs above
+    once became.
     """
-    return root / "live_captions" / f"{recording_id}.json"
+    return root / "live_captions" / assembly_id / f"{recording_id}.json"
 
 
 def purge_assembly_storage(
     root: Path, assembly_id: str, recorder_session_ids: Sequence[str] = ()
 ) -> None:
     """Remove every stored file of a deleted assembly (audio chunks, assembled
-    canonical audio, transcripts, exports, and the phones' shipped diagnostic
-    logs). assembly_id is a server-generated UUID, never client input.
+    canonical audio, transcripts, live captions, exports, and the phones'
+    shipped diagnostic logs). assembly_id is a server-generated UUID, never
+    client input.
 
     Device logs live under logs/devices/<session>.jsonl, outside the
     per-assembly tree, so they need their ids passed in — they were previously
@@ -84,7 +90,7 @@ def purge_assembly_storage(
     """
     import shutil
 
-    for subdir in ("recordings", "assembled", "transcripts", "exports"):
+    for subdir in ("recordings", "assembled", "transcripts", "exports", "live_captions"):
         shutil.rmtree(root / subdir / assembly_id, ignore_errors=True)
     for session_id in recorder_session_ids:
         device_log_path(root, session_id).unlink(missing_ok=True)

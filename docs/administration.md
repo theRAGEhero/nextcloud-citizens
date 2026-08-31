@@ -48,6 +48,33 @@ based, or OpenAI's `gpt-4o-transcribe-diarize` model) keeps speaker labels;
 plain Whisper and Vosk produce transcripts without them, and reports then omit
 the "who said it" attribution while keeping every quote and finding.
 
+### Live captions and the final transcript
+
+Two checkboxes decide what is produced, and they work independently:
+
+| Live | Final | What happens |
+|---|---|---|
+| ✓ | ✓ | Tables see captions while they talk; each recording is transcribed again afterwards from the complete audio. **The final transcript is the record** and the one the analysis reads. |
+| ✗ | ✓ | No captions during the round. Each recording is transcribed once it is uploaded, and that is the record. |
+| ✓ | ✗ | **The captions are the record.** Nothing is transcribed a second time. |
+| ✗ | ✗ | Nothing is transcribed at all: audio is stored and there is no transcript, no analysis and an empty report. |
+
+Live-only is worth choosing deliberately, not just a way to save a click.
+Transcribing the finished audio a second time costs roughly ten minutes of
+processing per half-hour table — for text a self-hosted engine already worked
+out while listening. Skipping it matters most on a small server running Vosk
+for ten tables at once.
+
+What you give up is accuracy and completeness. Captions are produced under time
+pressure: audio is dropped if the engine falls behind (logged when it happens),
+and a session that fails resumes after a cooldown, so speech in that window is
+never captioned. A report built from captions says so in its methodology note,
+in every format, so a reader knows which kind of record they hold.
+
+Nothing is stuck. The audio is kept, so **Re-transcribe** on any table's row in
+the Files tab transcribes it properly from the stored audio and re-runs the
+analysis — that works even with Final transcription switched off.
+
 ### Running Vosk yourself
 
 Vosk needs **a separate model per language**, but one server can hold several:
@@ -112,9 +139,13 @@ are never sent to browsers, never written to logs, and never reach the phones.
 
 | Step | What is sent | Where | When |
 |---|---|---|---|
-| Transcription | the assembled audio of one recording | Deepgram, Mistral, or the Whisper endpoint you configure (which can be your own server) | only after an admin configures an engine |
+| Transcription | the assembled audio of one recording | Deepgram, Mistral, or the Whisper endpoint you configure (which can be your own server) | only after an admin configures an engine, and only with **Final transcription** enabled |
 | Live captions | ~10-second audio chunks during recording | whichever engine is configured — none if it is self-hosted | only if live captions are enabled |
 | Analysis | transcript text (never audio) | the configured endpoint — may be your own server | only after an admin configures it |
+
+With live captions only, the assembled recording is never sent anywhere: the
+chunks streamed during the round are the sole egress, and with Vosk or a
+self-hosted Whisper server there is none at all.
 
 Audio, transcripts, findings and reports live in the app's own persistent
 storage, never in users' Nextcloud files. See [privacy.md](privacy.md) for the
@@ -129,6 +160,12 @@ of it, export the **whole session** as a portable archive (metadata, audio,
 transcripts and report), or delete audio and transcripts — per table or for the
 session — without deleting the assembly. Deleting an assembly deletes its
 stored files too.
+
+**Re-transcribe** on a table's row transcribes it again from the stored audio,
+replacing whatever transcript is there and re-running the analysis. A transcript
+built from live captions is marked `live` in the same list, so it is clear which
+tables are worth redoing. Quotes inside existing findings referred to the old
+text, so they are marked as removed rather than left pointing at nothing.
 
 **Automatic retention.** Settings → General sets how many days after an assembly
 is **closed** its audio is deleted; `0` keeps it indefinitely, and an individual
@@ -157,7 +194,14 @@ older version of the app. Regenerate the codes from the QR tab.
 started by the facilitator first; a closed session refuses new recordings.
 
 **Transcription never happens.** Check Settings for a configured key and use
-*Test*; the recording's state in the Files tab shows where it stopped.
+*Test*; the recording's state in the Files tab shows where it stopped. If both
+transcription checkboxes are unticked nothing is transcribed at all — Settings
+warns about this.
+
+**A table shows TRANSCRIPTION_FAILED with live captions only.** The caption
+engine never connected, or heard nothing it was confident about, so there was
+nothing to keep. The audio is unaffected: fix the engine and use
+**Re-transcribe** on that table.
 
 Health endpoint: `GET /api/v1/health` through the proxy reports the database,
 storage, free disk and any missing configuration.

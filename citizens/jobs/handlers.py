@@ -136,7 +136,9 @@ def handle_transcribe_from_live(session: Session, payload: dict) -> None:
     elif recording.state != "TRANSCRIBING":
         raise PermanentJobError(f"Recording is {recording.state}; cannot transcribe")
 
-    path = live_caption_path(get_settings().app_persistent_storage, recording.id)
+    path = live_caption_path(
+        get_settings().app_persistent_storage, recording.assembly_id, recording.id
+    )
     if not path.exists():
         waited = (utcnow() - recording.updated_at).total_seconds()
         if waited < LIVE_CAPTIONS_GRACE_SECONDS:

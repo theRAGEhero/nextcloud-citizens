@@ -37,6 +37,11 @@ that a human organizer reviews before anything is published.
 * **Two ways to run an assembly.** *Live*: you start and end each round and every
   armed table records simultaneously. *Independent*: each table works through the
   same questions on its own schedule, even days apart.
+* **Transcription that fits the room.** Four engines, two of which run entirely
+  on your own hardware. Live captions and the transcription of the finished audio
+  are separate switches: run both, or run captions alone and let them be the
+  record — which skips a second pass over every recording, at some cost in
+  accuracy that the report states plainly.
 * **Evidence-linked analysis.** Every finding cites the transcript passages that
   support it — speaker, timestamp, exact words. A finding with no evidence is
   discarded automatically.

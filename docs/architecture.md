@@ -53,8 +53,8 @@ Grows alongside the code; currently covers Milestone 0.
 | `citizens/main.py` | app factory, lifespan (storage → logging → DB → migrations → AppAPI handlers), request-log middleware, `enabled_handler` registering the top-menu entry + SPA script |
 | `citizens/config.py` | pydantic-settings over the AppAPI environment variables |
 | `citizens/logging_setup.py` | structlog: contextvar correlation IDs, secret redaction, pretty dev console + rotating `logs/citizens.jsonl` |
-| `citizens/storage/paths.py` | persistent-storage layout (`recordings/`, `assembled/`, `transcripts/`, `exports/`, `temp/`, `logs/`, `citizens.db`) |
-| `citizens/db/` | SQLAlchemy 2 (sync engine — endpoints doing DB work are `def`, FastAPI runs them in its threadpool), SQLite pragmas, Alembic migrations run at startup |
+| `citizens/storage/paths.py` | persistent-storage layout (`recordings/`, `assembled/`, `transcripts/`, `live_captions/`, `exports/`, `temp/`, `logs/`, `citizens.db`) — everything per-assembly lives under `<subdir>/<assembly_id>/` so deleting an assembly reaches all of it |
+| `citizens/db/` | SQLAlchemy 2 (sync engine — endpoints doing DB work are `def`, so FastAPI runs them in its threadpool; the one `async def` route, chunk upload, hands its blocking work to `run_in_threadpool` for the same reason), SQLite pragmas, Alembic migrations run at startup |
 | `citizens/services/audit.py` | audit-event writing |
 | `citizens/api/system.py` | `/api/v1/health` |
 | `js/citizens-main.js` | Milestone 0 shell injected into AppAPI's embedded top-menu page (`<div id="content">`); replaced by the Vue organizer SPA in Milestone 1 |
@@ -148,6 +148,17 @@ client log ring (IndexedDB)           ──►  logs/devices/<session>.jsonl
 - STT models are configured separately for live captions and final
   transcription per provider (Deepgram live/batch, Mistral batch; Mistral
   live reserved for Voxtral Realtime).
+- Live captions and final transcription are independent switches. With final
+  off, a finished caption session's lines are written to `live_captions/` and
+  the `TRANSCRIBE_FROM_LIVE` job turns them into a real `Transcript` through the
+  same `store_transcript()` the provider adapters use — so analysis, evidence
+  citations and reports need no special case. `transcripts.source`
+  (`final`/`live`, migration 0014) records which happened, and drives a line in
+  the report's methodology note.
+- A caption session keeps every line it produced, not the window it displays:
+  `status()` returns the last `MAX_LINES` for the phone while `session.lines`
+  holds the whole round. Persisting appends to any file already there, so a
+  session that dies and reconnects does not erase what preceded it.
 
 ## Dev workflow
 

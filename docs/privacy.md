@@ -17,6 +17,7 @@ Everything Citizens stores lives under the ExApp's own persistent storage
 | Audio recordings | `assembled/` | one file per table per round |
 | Upload chunks | `recordings/` | **deleted automatically** once the assembled file is verified; `manifest.json` keeps each chunk's checksum as the audit trail |
 | Transcripts | `transcripts/` + database | segments and words, with speaker labels |
+| Live captions | `live_captions/` | what a caption session heard, written when it ends; becomes the transcript when final transcription is off |
 | Findings and reports | database | AI drafts plus human review decisions |
 | Device diagnostics | `logs/devices/` | phone-side event log, capped at 5 MB per session |
 | Application log | `logs/citizens.jsonl` | rotated, 10 MB × 5 |
@@ -36,7 +37,12 @@ performs no transcription and no analysis.
 * **Analysis.** Only the *transcript text* is sent, never audio. Any
   OpenAI-compatible endpoint works, so this can also run on your own hardware.
 * **Live captions** use the same engine as transcription and are shown on the
-  recording phone only. They are never stored.
+  recording phone while it records. When a session ends, what it heard is
+  written to `live_captions/` — this is speech stored as text, and it is kept
+  whether or not it is used. If **Final transcription** is switched off in
+  Settings it becomes the assembly's transcript; otherwise it stays as a
+  by-product that the transcription of the finished audio supersedes. It is
+  deleted with the assembly, and with that recording's transcript.
 
 The recorder tells each table which of these applies **before recording
 starts** — see "Consent" below.
@@ -52,7 +58,9 @@ starts** — see "Consent" below.
   assembly and are not touched by retention. Delete them explicitly from the
   Files tab of the assembly if you need to.
 * Organisers can delete audio and transcripts at any time from the Files tab,
-  and deleting an assembly deletes its audio, transcripts and exports with it.
+  and deleting an assembly deletes its audio, transcripts, live captions and
+  exports with it. Deleting one table's transcript deletes that table's live
+  captions too — the same speech in a second file.
 * **Not implemented:** there is no automatic deletion of transcripts or
   findings, and no data-subject-request tooling. Both are manual today.
 
@@ -121,7 +129,7 @@ Stated plainly, because an organisation deploying this should know:
 ## Deleting everything for one assembly
 
 Deleting an assembly from the organiser UI removes its recordings, transcripts,
-findings, reports, exports and the phones' diagnostic logs, and purges its
-storage directory. Entries already written to the rotating application log
+live captions, findings, reports, exports and the phones' diagnostic logs, and
+purges its storage directory. Entries already written to the rotating application log
 (`logs/citizens.jsonl`) are not rewritten; they contain event names, ids and
 timings, never audio or transcript text.

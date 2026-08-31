@@ -303,17 +303,17 @@ def test_a_restarted_session_does_not_erase_what_came_before(settings_env):
     from citizens.storage.paths import live_caption_path
 
     first = make_session()
-    first.recording_id = "rec-resume"
+    first.recording_id, first.assembly_id = "rec-resume", "asm-1"
     first.add_line("before the failure", start=1.0)
     asyncio.run(LIVE_CAPTIONS._persist_transcript(first))
 
     second = make_session()
-    second.recording_id = "rec-resume"
+    second.recording_id, second.assembly_id = "rec-resume", "asm-1"
     second.add_line("after reconnecting", start=90.0)
     asyncio.run(LIVE_CAPTIONS._persist_transcript(second))
 
     written = json.loads(
-        live_caption_path(settings_env.app_persistent_storage, "rec-resume").read_text()
+        live_caption_path(settings_env.app_persistent_storage, "asm-1", "rec-resume").read_text()
     )
     assert [line["text"] for line in written["lines"]] == [
         "before the failure",

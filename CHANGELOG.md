@@ -4,6 +4,23 @@ All notable changes to Nextcloud Citizens.
 
 ## [Unreleased]
 
+### Live captions are deleted when you delete things — 2026-08-31
+
+- **Deleting an assembly left its live captions on the disk.** When captions
+  started being saved two days ago, the file was filed by recording rather than
+  by assembly — so the routine that erases an assembly's storage walked straight
+  past it, leaving the text of what people said behind, with nothing left in the
+  app able to reach or remove it. The same applied to deleting one table's
+  transcript: the transcript went, the captions it was built from stayed.
+  Both now go. No assembly has used captions-as-transcript yet, so nothing real
+  was stranded.
+- **The privacy note said live captions "are never stored."** True until the
+  29th, not after. It now describes what is actually kept, where, for how long
+  and what deletes it.
+- The administration guide explains what the two transcription switches do in
+  each combination, what captions-only costs you, and the Re-transcribe action.
+
+
 ### Live captions can be the transcript — 2026-08-29
 
 - **Turning off "Final transcription" no longer throws the assembly away.**
